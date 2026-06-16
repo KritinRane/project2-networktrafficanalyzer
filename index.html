@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NerdsToGo — Network Assessment</title>
+<style>
+  :root {
+    --blue: #1a4f8a;
+    --blue-light: #e8f0fb;
+    --blue-mid: #2d6ec7;
+    --red: #c0392b;
+    --red-light: #fdf0ef;
+    --orange: #d35400;
+    --orange-light: #fef5ec;
+    --green: #1e8449;
+    --green-light: #eafaf1;
+    --gray-50: #f8f9fa;
+    --gray-100: #f1f3f5;
+    --gray-200: #e9ecef;
+    --gray-400: #adb5bd;
+    --gray-600: #6c757d;
+    --gray-800: #343a40;
+    --gray-900: #212529;
+    --white: #ffffff;
+    --radius: 6px;
+    --radius-lg: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--gray-50); color: var(--gray-900); font-size: 14px; line-height: 1.5; }
+  
+  /* NAV */
+  .nav { background: var(--blue); padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+  .nav-logo { display: flex; align-items: center; gap: 10px; color: white; font-weight: 700; font-size: 16px; letter-spacing: -0.3px; }
+  .nav-logo-icon { width: 30px; height: 30px; background: white; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+  .nav-logo-icon svg { width: 18px; height: 18px; fill: var(--blue); }
+  .nav-right { color: rgba(255,255,255,0.7); font-size: 13px; }
+
+  /* LAYOUT */
+  .page { max-width: 1100px; margin: 0 auto; padding: 24px 20px; }
+
+  /* UPLOAD SCREEN */
+  #upload-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(100vh - 52px); }
+  .upload-card { background: white; border-radius: var(--radius-lg); box-shadow: var(--shadow-md); padding: 48px 40px; text-align: center; width: 100%; max-width: 520px; }
+  .upload-card h1 { font-size: 22px; font-weight: 700; color: var(--gray-900); margin-bottom: 6px; }
+  .upload-card p { color: var(--gray-600); margin-bottom: 28px; font-size: 14px; }
+  .drop-zone { border: 2px dashed var(--gray-200); border-radius: var(--radius-lg); padding: 36px 24px; cursor: pointer; transition: all 0.15s; background: var(--gray-50); }
+  .drop-zone:hover, .drop-zone.over { border-color: var(--blue-mid); background: var(--blue-light); }
+  .drop-zone.has-file { border-color: var(--green); background: var(--green-light); border-style: solid; }
+  .drop-icon { font-size: 36px; margin-bottom: 10px; }
+  .drop-zone h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; color: var(--gray-800); }
+  .drop-zone p { font-size: 13px; color: var(--gray-600); margin: 0; }
+  .drop-zone .filename { font-size: 14px; font-weight: 600; color: var(--green); margin-top: 6px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: var(--radius); font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+  .btn-primary { background: var(--blue); color: white; width: 100%; justify-content: center; margin-top: 16px; }
+  .btn-primary:hover:not(:disabled) { background: var(--blue-mid); }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-secondary { background: var(--gray-100); color: var(--gray-800); border: 1px solid var(--gray-200); margin-top: 10px; width: 100%; justify-content: center; }
+  .btn-secondary:hover { background: var(--gray-200); }
+  .error-msg { margin-top: 12px; padding: 10px 14px; background: var(--red-light); color: var(--red); border-radius: var(--radius); font-size: 13px; text-align: left; }
+
+  /* PROGRESS */
+  .progress-wrap { margin-top: 20px; }
+  .progress-bar-bg { height: 6px; background: var(--gray-200); border-radius: 99px; overflow: hidden; margin: 8px 0; }
+  .progress-bar-fill { height: 100%; background: var(--blue); border-radius: 99px; transition: width 0.3s ease; }
+  .progress-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; text-align: left; }
+  .progress-step { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--gray-600); }
+  .progress-step.active { color: var(--gray-900); font-weight: 500; }
+  .progress-step.done { color: var(--green); }
+  .step-dot { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--gray-300); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px; }
+  .progress-step.active .step-dot { border-color: var(--blue); background: var(--blue-light); }
+  .progress-step.done .step-dot { border-color: var(--green); background: var(--green-light); color: var(--green); }
+
+  /* DASHBOARD */
+  #dashboard-screen { display: none; }
+  .dash-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+  .dash-title h2 { font-size: 20px; font-weight: 700; }
+  .dash-title p { color: var(--gray-600); font-size: 13px; margin-top: 2px; }
+  .dash-actions { display: flex; gap: 8px; }
+  .btn-outline { background: white; color: var(--blue); border: 1.5px solid var(--blue); padding: 8px 14px; border-radius: var(--radius); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-outline:hover { background: var(--blue-light); }
+  .btn-new { background: var(--gray-100); color: var(--gray-700); border: 1px solid var(--gray-200); padding: 8px 14px; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; }
+  .btn-new:hover { background: var(--gray-200); }
+
+  /* RISK SCORE BANNER */
+  .risk-banner { border-radius: var(--radius-lg); padding: 20px 24px; display: flex; align-items: center; gap: 24px; margin-bottom: 20px; flex-wrap: wrap; }
+  .risk-banner.high { background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%); color: white; }
+  .risk-banner.medium { background: linear-gradient(135deg, #d35400 0%, #e67e22 100%); color: white; }
+  .risk-banner.low { background: linear-gradient(135deg, #1e8449 0%, #27ae60 100%); color: white; }
+  .risk-score-circle { width: 72px; height: 72px; border-radius: 50%; background: rgba(255,255,255,0.25); display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; }
+  .risk-score-circle .score-num { font-size: 26px; font-weight: 800; line-height: 1; }
+  .risk-score-circle .score-label { font-size: 10px; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.5px; }
+  .risk-banner-text h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .risk-banner-text p { font-size: 14px; opacity: 0.9; line-height: 1.5; max-width: 600px; }
+
+  /* METRIC CARDS */
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .metric-card { background: white; border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
+  .metric-card .label { font-size: 12px; color: var(--gray-600); font-weight: 500; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 6px; }
+  .metric-card .value { font-size: 26px; font-weight: 700; line-height: 1; }
+  .metric-card .sub { font-size: 12px; color: var(--gray-600); margin-top: 4px; }
+  .metric-card.danger .value { color: var(--red); }
+  .metric-card.warning .value { color: var(--orange); }
+  .metric-card.good .value { color: var(--green); }
+
+  /* SECTION */
+  .section { margin-bottom: 20px; }
+  .section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--gray-600); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .section-title .count-badge { background: var(--gray-200); color: var(--gray-700); padding: 1px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+
+  /* ALERT CARDS */
+  .alert-list { display: flex; flex-direction: column; gap: 10px; }
+  .alert-card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); display: flex; gap: 0; overflow: hidden; }
+  .alert-card .severity-bar { width: 5px; flex-shrink: 0; }
+  .alert-card.sev-high .severity-bar { background: var(--red); }
+  .alert-card.sev-medium .severity-bar { background: var(--orange); }
+  .alert-card.sev-low .severity-bar { background: #2980b9; }
+  .alert-card .alert-body { padding: 14px 16px; flex: 1; }
+  .alert-card .alert-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+  .sev-badge { padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .sev-badge.high { background: var(--red-light); color: var(--red); }
+  .sev-badge.medium { background: var(--orange-light); color: var(--orange); }
+  .sev-badge.low { background: var(--blue-light); color: var(--blue); }
+  .alert-card .alert-title { font-size: 14px; font-weight: 600; color: var(--gray-900); }
+  .alert-card .alert-detail { font-size: 13px; color: var(--gray-600); line-height: 1.5; }
+  .alert-card .alert-action { font-size: 12px; color: var(--blue); margin-top: 6px; font-weight: 500; }
+
+  /* TWO COL */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* TABLE CARD */
+  .table-card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+  .table-card table { width: 100%; border-collapse: collapse; }
+  .table-card th { padding: 10px 14px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-600); background: var(--gray-50); border-bottom: 1px solid var(--gray-200); }
+  .table-card td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid var(--gray-100); color: var(--gray-800); }
+  .table-card tr:last-child td { border-bottom: none; }
+  .table-card tr:hover td { background: var(--gray-50); }
+  .mono { font-family: 'SF Mono', 'Consolas', monospace; font-size: 12px; }
+  .status-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; }
+  .status-badge.known { background: var(--green-light); color: var(--green); }
+  .status-badge.flagged { background: var(--red-light); color: var(--red); }
+  .status-badge.review { background: var(--orange-light); color: var(--orange); }
+
+  /* PROTOCOL BAR */
+  .proto-list { display: flex; flex-direction: column; gap: 0; }
+  .proto-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--gray-100); }
+  .proto-row:last-child { border-bottom: none; }
+  .proto-name { width: 60px; font-size: 13px; font-weight: 500; color: var(--gray-800); }
+  .proto-bar-wrap { flex: 1; height: 8px; background: var(--gray-100); border-radius: 99px; overflow: hidden; }
+  .proto-bar-fill { height: 100%; border-radius: 99px; background: var(--blue); }
+  .proto-pct { font-size: 12px; color: var(--gray-600); width: 38px; text-align: right; }
+  .proto-count { font-size: 12px; color: var(--gray-400); width: 60px; text-align: right; }
+
+  /* CUSTOMER SUMMARY */
+  .summary-card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px 22px; }
+  .summary-card .summary-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-600); margin-bottom: 10px; }
+  .summary-card p { font-size: 14px; color: var(--gray-800); line-height: 1.7; }
+
+  /* TABS */
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--gray-200); margin-bottom: 16px; }
+  .tab { padding: 8px 16px; font-size: 13px; font-weight: 500; color: var(--gray-600); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+  .tab.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 600; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* PORT TABLE */
+  .port-suspicious { color: var(--red); font-weight: 600; }
+
+  /* FOOTER */
+  .dash-footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: center; color: var(--gray-500); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-logo">
+    <div class="nav-logo-icon">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </div>
+    NerdsToGo &mdash; Network Assessment
+  </div>
+  <div class="nav-right" id="nav-file-info"></div>
+</nav>
+
+<!-- UPLOAD SCREEN -->
+<div id="upload-screen">
+  <div class="upload-card">
+    <h1>Network Capture Analysis</h1>
+    <p>Upload a packet capture file to generate a full network assessment report.</p>
+
+    <div class="drop-zone" id="drop-zone">
+      <div class="drop-icon">&#128196;</div>
+      <h3 id="drop-title">Drop your .pcap file here</h3>
+      <p id="drop-sub">or click to browse &nbsp;&middot;&nbsp; .pcap, .pcapng, .cap</p>
+      <div class="filename" id="drop-filename"></div>
+    </div>
+    <input type="file" id="file-input" accept=".pcap,.pcapng,.cap" style="display:none">
+
+    <div id="error-box" style="display:none" class="error-msg"></div>
+
+    <div id="progress-wrap" style="display:none" class="progress-wrap">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--gray-600);margin-bottom:4px">
+        <span id="progress-label">Uploading...</span>
+        <span id="progress-pct">0%</span>
+      </div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" id="progress-fill" style="width:0%"></div></div>
+      <div class="progress-steps">
+        <div class="progress-step active" id="ps1"><div class="step-dot" id="pd1">&#8593;</div>Uploading to server</div>
+        <div class="progress-step" id="ps2"><div class="step-dot" id="pd2">2</div>Running TShark dissection</div>
+        <div class="progress-step" id="ps3"><div class="step-dot" id="pd3">3</div>Parsing packet data</div>
+        <div class="progress-step" id="ps4"><div class="step-dot" id="pd4">4</div>Generating assessment report</div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary" id="analyze-btn" disabled onclick="startAnalysis()">Run Assessment</button>
+  </div>
+</div>
+
+<!-- DASHBOARD SCREEN -->
+<div id="dashboard-screen">
+  <div class="page">
+
+    <div class="dash-header">
+      <div class="dash-title">
+        <h2 id="dash-title-text">Network Assessment Report</h2>
+        <p id="dash-subtitle"></p>
+      </div>
+      <div class="dash-actions">
+        <button class="btn-new" onclick="resetToUpload()">&#8592; New Assessment</button>
+        <button class="btn-outline" onclick="window.print()">&#128438; Export Report</button>
+      </div>
+    </div>
+
+    <!-- RISK BANNER -->
+    <div class="risk-banner" id="risk-banner">
+      <div class="risk-score-circle">
+        <div class="score-num" id="risk-score-num">--</div>
+        <div class="score-label">Risk</div>
+      </div>
+      <div class="risk-banner-text">
+        <h3 id="risk-level-text">Calculating...</h3>
+        <p id="customer-summary-text"></p>
+      </div>
+    </div>
+
+    <!-- METRICS -->
+    <div class="metrics-grid" id="metrics-grid"></div>
+
+    <!-- ALERTS -->
+    <div class="section">
+      <div class="section-title">
+        Findings &amp; Alerts
+        <span class="count-badge" id="alert-count-badge">0</span>
+      </div>
+      <div class="alert-list" id="alert-list"></div>
+    </div>
+
+    <!-- TABS: Devices / Protocols / Ports -->
+    <div class="section">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('devices')">Device Inventory</div>
+        <div class="tab" onclick="switchTab('protocols')">Protocol Breakdown</div>
+        <div class="tab" onclick="switchTab('ports')">Port Activity</div>
+      </div>
+
+      <div class="tab-panel active" id="tab-devices">
+        <div class="table-card">
+          <table id="device-table">
+            <thead>
+              <tr>
+                <th>IP Address</th>
+                <th>MAC Address</th>
+                <th>Manufacturer</th>
+                <th>Packets</th>
+                <th>Data</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="device-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="tab-panel" id="tab-protocols">
+        <div class="table-card proto-list" id="proto-list"></div>
+      </div>
+
+      <div class="tab-panel" id="tab-ports">
+        <div class="table-card">
+          <table>
+            <thead>
+              <tr>
+                <th>Port</th>
+                <th>Service</th>
+                <th>Connections</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="port-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="dash-footer">
+      <span>NerdsToGo Network Assessment &mdash; Powered by TShark + Groq AI</span>
+      <span id="footer-time"></span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+let selectedFile = null;
+
+// ─── FILE HANDLING ───────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const analyzeBtn = document.getElementById('analyze-btn');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) setFile(fileInput.files[0]); });
+
+function setFile(f) {
+  const ext = '.' + f.name.split('.').pop().toLowerCase();
+  if (!['.pcap','.pcapng','.cap'].includes(ext)) {
+    showError('Invalid file type. Please upload a .pcap, .pcapng, or .cap file.');
+    return;
+  }
+  hideError();
+  selectedFile = f;
+  dropZone.classList.add('has-file');
+  document.getElementById('drop-title').textContent = f.name;
+  document.getElementById('drop-sub').textContent = formatBytes(f.size) + ' · ' + ext.slice(1).toUpperCase();
+  analyzeBtn.disabled = false;
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-box');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideError() { document.getElementById('error-box').style.display = 'none'; }
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
+}
+
+// ─── ANALYSIS ───────────────────────────────────────────────────
+async function startAnalysis() {
+  if (!selectedFile) return;
+  analyzeBtn.disabled = true;
+  hideError();
+
+  document.getElementById('progress-wrap').style.display = 'block';
+  analyzeBtn.style.display = 'none';
+
+  const form = new FormData();
+  form.append('file', selectedFile);
+
+  setStep(1, 'active');
+  animateTo(20);
+
+  try {
+    const res = await fetch(API + '/api/analyze', { method: 'POST', body: form });
+
+    setStep(1, 'done'); setStep(2, 'active'); animateTo(50);
+    await sleep(300);
+    setStep(2, 'done'); setStep(3, 'active'); animateTo(75);
+    await sleep(300);
+    setStep(3, 'done'); setStep(4, 'active'); animateTo(90);
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Server error');
+    }
+
+    const data = await res.json();
+    animateTo(100);
+    setStep(4, 'done');
+
+    await sleep(400);
+    renderDashboard(data);
+  } catch (e) {
+    showError('Analysis failed: ' + e.message);
+    document.getElementById('progress-wrap').style.display = 'none';
+    analyzeBtn.style.display = 'block';
+    analyzeBtn.disabled = false;
+    resetSteps();
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function animateTo(target) {
+  const fill = document.getElementById('progress-fill');
+  const pct = document.getElementById('progress-pct');
+  let cur = parseFloat(fill.style.width) || 0;
+  const interval = setInterval(() => {
+    cur = Math.min(cur + 2, target);
+    fill.style.width = cur + '%';
+    pct.textContent = Math.round(cur) + '%';
+    if (cur >= target) clearInterval(interval);
+  }, 20);
+}
+
+function setStep(n, state) {
+  const el = document.getElementById('ps' + n);
+  const dot = document.getElementById('pd' + n);
+  el.className = 'progress-step ' + state;
+  if (state === 'done') dot.textContent = '✓';
+  if (state === 'active') dot.textContent = n === 1 ? '↑' : n;
+}
+
+function resetSteps() {
+  for (let i = 1; i <= 4; i++) {
+    document.getElementById('ps' + i).className = 'progress-step' + (i === 1 ? ' active' : '');
+    document.getElementById('pd' + i).textContent = i === 1 ? '↑' : i;
+  }
+  document.getElementById('progress-fill').style.width = '0%';
+  document.getElementById('progress-pct').textContent = '0%';
+}
+
+// ─── RENDER DASHBOARD ──────────────────────────────────────────
+function renderDashboard(data) {
+  const a = data.analysis;
+  const s = a.summary;
+
+  document.getElementById('upload-screen').style.display = 'none';
+  document.getElementById('dashboard-screen').style.display = 'block';
+  document.getElementById('nav-file-info').textContent = data.filename;
+  document.getElementById('dash-subtitle').textContent =
+    s.total_packets.toLocaleString() + ' packets · ' +
+    s.unique_hosts + ' devices · ' +
+    formatDuration(s.duration_secs);
+  document.getElementById('footer-time').textContent = 'Generated ' + new Date().toLocaleString();
+
+  // Risk score
+  const score = calcRiskScore(a);
+  const riskLevel = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
+  const riskLabel = score >= 70 ? 'High Risk' : score >= 40 ? 'Moderate Risk' : 'Low Risk';
+  const banner = document.getElementById('risk-banner');
+  banner.className = 'risk-banner ' + riskLevel;
+  document.getElementById('risk-score-num').textContent = score;
+  document.getElementById('risk-level-text').textContent = riskLabel + ' Network';
+  document.getElementById('customer-summary-text').textContent = a.customer_summary || '';
+
+  // Metrics
+  const mg = document.getElementById('metrics-grid');
+  mg.innerHTML = '';
+  const metrics = [
+    { label: 'Total Packets', value: s.total_packets.toLocaleString(), sub: formatDuration(s.duration_secs), cls: '' },
+    { label: 'Devices Found', value: s.unique_hosts, sub: a.devices.filter(d=>d.flagged).length + ' flagged', cls: a.devices.filter(d=>d.flagged).length > 0 ? 'danger' : 'good' },
+    { label: 'Alerts', value: s.alert_count, sub: a.alerts.filter(x=>x.severity==='high').length + ' high severity', cls: s.alert_count > 0 ? (a.alerts.some(x=>x.severity==='high') ? 'danger' : 'warning') : 'good' },
+    { label: 'TCP Retrans.', value: s.retransmissions.toLocaleString(), sub: s.retrans_pct + '% of TCP', cls: s.retrans_pct > 2 ? 'warning' : '' },
+    { label: 'DNS Failures', value: s.dns_failures, sub: 'NXDOMAIN responses', cls: s.dns_failures > 20 ? 'warning' : '' },
+    { label: 'Data Captured', value: formatBytes(s.total_bytes), sub: 'total traffic', cls: '' },
+  ];
+  metrics.forEach(m => {
+    mg.innerHTML += `<div class="metric-card ${m.cls}">
+      <div class="label">${m.label}</div>
+      <div class="value">${m.value}</div>
+      <div class="sub">${m.sub}</div>
+    </div>`;
+  });
+
+  // Alerts
+  const al = document.getElementById('alert-list');
+  al.innerHTML = '';
+  document.getElementById('alert-count-badge').textContent = a.alerts.length;
+  if (a.alerts.length === 0) {
+    al.innerHTML = '<div style="background:white;border-radius:6px;padding:20px;text-align:center;color:var(--green);font-weight:600;box-shadow:var(--shadow)">&#10003; No issues detected — network looks healthy</div>';
+  } else {
+    a.alerts.forEach(alert => {
+      const action = alertAction(alert);
+      al.innerHTML += `<div class="alert-card sev-${alert.severity}">
+        <div class="severity-bar"></div>
+        <div class="alert-body">
+          <div class="alert-top">
+            <span class="sev-badge ${alert.severity}">${alert.severity}</span>
+            <div class="alert-title">${alert.title}</div>
+          </div>
+          <div class="alert-detail">${alert.detail}</div>
+          ${action ? `<div class="alert-action">&#8594; ${action}</div>` : ''}
+        </div>
+      </div>`;
+    });
+  }
+
+  // Devices
+  const tbody = document.getElementById('device-tbody');
+  tbody.innerHTML = '';
+  a.devices.forEach(d => {
+    const status = d.flagged ? (d.manufacturer === 'Unknown' ? 'flagged' : 'review') : 'known';
+    const statusLabel = { flagged: 'Flagged', review: 'Review', known: 'Known' }[status];
+    tbody.innerHTML += `<tr>
+      <td class="mono">${d.ip}</td>
+      <td class="mono">${d.mac || '—'}</td>
+      <td>${d.manufacturer}</td>
+      <td>${d.packets.toLocaleString()}</td>
+      <td>${formatBytes(d.bytes)}</td>
+      <td><span class="status-badge ${status}">${statusLabel}</span></td>
+    </tr>`;
+  });
+
+  // Protocols
+  const pl = document.getElementById('proto-list');
+  pl.innerHTML = '';
+  const maxPct = Math.max(...a.protocols.map(p => p.pct));
+  a.protocols.forEach(p => {
+    pl.innerHTML += `<div class="proto-row">
+      <div class="proto-name">${p.name}</div>
+      <div class="proto-bar-wrap"><div class="proto-bar-fill" style="width:${(p.pct/maxPct*100).toFixed(1)}%"></div></div>
+      <div class="proto-pct">${p.pct}%</div>
+      <div class="proto-count">${p.count.toLocaleString()}</div>
+    </div>`;
+  });
+
+  // Ports
+  const ptbody = document.getElementById('port-tbody');
+  ptbody.innerHTML = '';
+  a.ports.forEach(p => {
+    ptbody.innerHTML += `<tr>
+      <td class="mono ${p.suspicious ? 'port-suspicious' : ''}">${p.port}</td>
+      <td>${p.label}</td>
+      <td>${p.count.toLocaleString()}</td>
+      <td>${p.suspicious ? '<span class="sev-badge high">Suspicious</span>' : '<span class="sev-badge" style="background:var(--green-light);color:var(--green)">Normal</span>'}</td>
+    </tr>`;
+  });
+}
+
+function calcRiskScore(a) {
+  let score = 0;
+  const highAlerts = a.alerts.filter(x => x.severity === 'high').length;
+  const medAlerts = a.alerts.filter(x => x.severity === 'medium').length;
+  score += highAlerts * 25;
+  score += medAlerts * 12;
+  if (a.summary.retrans_pct > 3) score += 10;
+  if (a.summary.dns_failures > 50) score += 8;
+  return Math.min(score, 100);
+}
+
+function alertAction(alert) {
+  const actions = {
+    unknown_device: 'Change your WiFi password and audit connected devices immediately.',
+    suspicious_port: 'Investigate the device and block this port at the firewall.',
+    retransmissions: 'Run a router diagnostic and check with your ISP for line quality issues.',
+    dns_failures: 'Check DNS settings on the flagged device and scan for malware.',
+  };
+  return actions[alert.type] || '';
+}
+
+function formatDuration(secs) {
+  if (!secs) return '—';
+  if (secs < 60) return secs.toFixed(1) + 's';
+  const m = Math.floor(secs / 60);
+  const s = Math.round(secs % 60);
+  return m + 'm ' + s + 's';
+}
+
+// ─── TABS ───────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    const names = ['devices','protocols','ports'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+}
+
+// ─── RESET ──────────────────────────────────────────────────────
+function resetToUpload() {
+  selectedFile = null;
+  fileInput.value = '';
+  dropZone.classList.remove('has-file');
+  document.getElementById('drop-title').textContent = 'Drop your .pcap file here';
+  document.getElementById('drop-sub').textContent = 'or click to browse · .pcap, .pcapng, .cap';
+  document.getElementById('drop-filename').textContent = '';
+  analyzeBtn.disabled = true;
+  analyzeBtn.style.display = 'block';
+  document.getElementById('progress-wrap').style.display = 'none';
+  document.getElementById('nav-file-info').textContent = '';
+  hideError();
+  resetSteps();
+  document.getElementById('dashboard-screen').style.display = 'none';
+  document.getElementById('upload-screen').style.display = 'flex';
+}
+</script>
+</body>
+</html>

@@ -12,19 +12,40 @@ SUSPICIOUS_PORTS = {
     8888: "Common C2 port",
 }
 
-KNOWN_SERVICES = {
-    "17.": "Apple (iCloud/Push)",
+# Known external IP prefixes -> service name
+EXTERNAL_SERVICES = {
+    "17.": "Apple (iCloud/Push Notifications)",
     "2620:149:": "Apple (iCloud)",
     "2607:f8b0:": "Google",
     "2606:4700:": "Cloudflare",
-    "2603:": "Microsoft",
+    "2603:": "Microsoft 365",
+    "2601:": "Comcast (ISP)",
     "34.": "Google Cloud",
     "35.": "Google Cloud",
     "142.250.": "Google",
     "140.82.112.": "GitHub",
-    "50.19.": "Grammarly (AWS)",
-    "54.157.": "Grammarly (AWS)",
+    "50.19.": "AWS (Grammarly)",
+    "54.": "Amazon AWS",
+    "52.": "Amazon AWS",
+    "3.": "Amazon AWS",
+    "100.": "AWS/Cloudflare",
     "162.247.": "Fastly CDN",
+    "130.211.": "Google Cloud",
+    "108.139.": "Amazon CloudFront",
+    "57.144.": "Apple",
+    "57.155.": "Apple (IMAP)",
+}
+
+# Known device name patterns from mDNS hostnames seen in traffic
+HOSTNAME_DEVICE_MAP = {
+    "iphone": ("Apple iPhone", "Apple"),
+    "macbook": ("Apple MacBook", "Apple"),
+    "ipad": ("Apple iPad", "Apple"),
+    "imac": ("Apple iMac", "Apple"),
+    "apple": ("Apple Device", "Apple"),
+    "android": ("Android Device", "Android"),
+    "samsung": ("Samsung Device", "Samsung"),
+    "pixel": ("Google Pixel", "Google"),
 }
 
 
@@ -40,38 +61,50 @@ def _get(pkt, *keys):
 def _is_local(ip):
     if not ip:
         return False
-    local_prefixes = (
+    return any(ip.startswith(p) for p in (
         "192.168.", "10.", "172.16.", "172.17.", "172.18.", "172.19.",
-        "172.20.", "172.21.", "172.22.", "172.23.", "172.24.", "172.25.",
-        "172.26.", "172.27.", "172.28.", "172.29.", "172.30.", "172.31.",
-        "fe80::", "fc", "fd",
-    )
-    return any(ip.lower().startswith(p) for p in local_prefixes)
+        "172.2", "172.3",
+    ))
 
 
-def _is_multicast(ip):
+def _is_skip(ip):
     if not ip:
-        return False
-    return (ip.startswith("224.") or ip.startswith("239.") or
-            ip.startswith("ff0") or ip.startswith("ff02") or
-            ip == "255.255.255.255" or ip == "192.168.1.255" or
-            ip == "0.0.0.0")
+        return True
+    skip = ("224.", "239.", "255.", "0.0.0.0", "ff0", "ff02", "ff05")
+    return any(ip.startswith(s) or ip == s for s in skip) or ip.endswith(".255")
 
 
-def _get_ip_pair(layers):
-    """Extract src/dst IP supporting both IPv4 and IPv6."""
-    src = _get(layers, "ip", "ip.src") or _get(layers, "ipv6", "ipv6.src")
-    dst = _get(layers, "ip", "ip.dst") or _get(layers, "ipv6", "ipv6.dst")
-    return src, dst
-
-
-def _identify_service(ip):
+def _identify_external(ip):
     if not ip:
         return None
-    for prefix, name in KNOWN_SERVICES.items():
+    for prefix, name in EXTERNAL_SERVICES.items():
         if ip.startswith(prefix):
             return name
     return None
+
+
+def _infer_device(hostname, mac, services_contacted):
+    """Infer device type from hostname, MAC, and services it talks to."""
+    hn = (hostname or "").lower()
+    for keyword, (device_name, manufacturer) in HOSTNAME_DEVICE_MAP.items():
+        if keyword in hn:
+            return device_name, manufacturer
+
+    # infer from services contacted
+    svc_str = " ".join(services_contacted).lower()
+    if "apple" in svc_str and "icloud" in svc_str:
+        return "Apple Device", "Apple"
+    if "apple" in svc_str:
+        return "Apple Device", "Apple"
+    if "google" in svc_str and "android" in svc_str:
+        return "Android Device", "Android"
+
+    # try OUI
+    oui = lookup_oui(mac) if mac else "Unknown"
+    if oui != "Unknown":
+        return oui + " Device", oui
+
+    return "Unknown Device", "Unknown"
 
 
 def parse_packets(raw_packets: list) -> dict:
@@ -85,7 +118,6 @@ def parse_packets(raw_packets: list) -> dict:
     start_time = None
     end_time = None
     external_services = defaultdict(int)
-
     for raw in raw_packets:
         layers = _get(raw, "_source", "layers") or {}
 
@@ -108,31 +140,44 @@ def parse_packets(raw_packets: list) -> dict:
 
         frame_len = _get(layers, "frame", "frame.len")
         if frame_len:
-            total_bytes += int(frame_len)
+            try:
+                total_bytes += int(frame_len)
+            except (ValueError, TypeError):
+                pass
 
-        src_ip, dst_ip = _get_ip_pair(layers)
+        # IPs -- support both IPv4 and IPv6
+        src_ip = _get(layers, "ip", "ip.src") or _get(layers, "ipv6", "ipv6.src")
+        dst_ip = _get(layers, "ip", "ip.dst") or _get(layers, "ipv6", "ipv6.dst")
         src_mac = _get(layers, "eth", "eth.src")
         dst_mac = _get(layers, "eth", "eth.dst")
 
-        # extract hostnames from mDNS
-        # extract hostnames from mDNS responses
-        dns_layer = _get(layers, "dns")
-        if dns_layer:
-            # look for .local hostnames in any dns field
-            for key, val in dns_layer.items() if isinstance(dns_layer, dict) else []:
-                if isinstance(val, str) and ".local" in val.lower():
-                    name = val.lower()
-                    if src_ip and _is_local(src_ip) and not src_ip.startswith("fe80"):
-                        clean = val.split(".local")[0].split(".")[-1]
-                        if clean:
-                            hostname_map[src_ip] = clean
+        # extract hostnames -- check every layer for .local names
+        for layer_name, layer_data in layers.items():
+            if not isinstance(layer_data, dict):
+                continue
+            for field_key, field_val in layer_data.items():
+                if isinstance(field_val, str) and ".local" in field_val.lower():
+                    name_lower = field_val.lower()
+                    # associate with the src IP if it's local
+                    if src_ip and _is_local(src_ip):
+                        # clean up: take the readable part before .local
+                        base = field_val.split(".local")[0]
+                        # strip service prefixes like _companion-link._tcp.
+                        if "._" in base:
+                            parts = base.split("._")
+                            base = parts[0]
+                        if base and len(base) > 2:
+                            existing = hostname_map.get(src_ip, "")
+                            # prefer longer/more descriptive hostnames
+                            if len(base) > len(existing):
+                                hostname_map[src_ip] = base
                     break
 
         # protocol
         proto = _get(layers, "_ws.col.Protocol") or "Other"
         if isinstance(proto, list):
             proto = proto[0]
-        protocol_counts[proto] += 1
+        protocol_counts[str(proto)] += 1
 
         # retransmissions
         tcp = _get(layers, "tcp")
@@ -152,41 +197,43 @@ def parse_packets(raw_packets: list) -> dict:
         udp = _get(layers, "udp")
         src_port = dst_port = None
         if tcp:
-            sp = _get(tcp, "tcp.srcport")
-            dp = _get(tcp, "tcp.dstport")
-            if sp:
-                src_port = int(sp)
-            if dp:
-                dst_port = int(dp)
+            try:
+                sp = _get(tcp, "tcp.srcport")
+                dp = _get(tcp, "tcp.dstport")
+                if sp: src_port = int(sp)
+                if dp: dst_port = int(dp)
+            except (ValueError, TypeError):
+                pass
         elif udp:
-            sp = _get(udp, "udp.srcport")
-            dp = _get(udp, "udp.dstport")
-            if sp:
-                src_port = int(sp)
-            if dp:
-                dst_port = int(dp)
+            try:
+                sp = _get(udp, "udp.srcport")
+                dp = _get(udp, "udp.dstport")
+                if sp: src_port = int(sp)
+                if dp: dst_port = int(dp)
+            except (ValueError, TypeError):
+                pass
 
         if dst_port:
             port_counts[dst_port] += 1
 
         # track external services
         for ip in [src_ip, dst_ip]:
-            if ip and not _is_local(ip) and not _is_multicast(ip):
-                svc = _identify_service(ip)
+            if ip and not _is_local(ip) and not _is_skip(ip):
+                svc = _identify_external(ip)
                 if svc:
                     external_services[svc] += 1
 
-        # device tracking -- only local IPs
+        # device tracking -- local IPs only, skip link-local IPv6 and multicast
         for ip, mac in [(src_ip, src_mac), (dst_ip, dst_mac)]:
-            if not ip or _is_multicast(ip) or not _is_local(ip):
+            if not ip or _is_skip(ip) or not _is_local(ip):
                 continue
-            if ip.startswith("fe80::"):
-                continue  # skip link-local IPv6, too noisy
+            if ip.startswith("fe80") or ip.startswith("169.254"):
+                continue
+
             if ip not in devices:
                 devices[ip] = {
                     "ip": ip,
                     "mac": mac or "",
-                    "manufacturer": lookup_oui(mac) if mac else "Unknown",
                     "packets_sent": 0,
                     "packets_recv": 0,
                     "bytes_sent": 0,
@@ -197,9 +244,13 @@ def parse_packets(raw_packets: list) -> dict:
             d = devices[ip]
             if mac and not d["mac"]:
                 d["mac"] = mac
-                d["manufacturer"] = lookup_oui(mac)
 
-            pkt_size = int(frame_len) if frame_len else 0
+            pkt_size = 0
+            try:
+                pkt_size = int(frame_len) if frame_len else 0
+            except (ValueError, TypeError):
+                pass
+
             if ip == src_ip:
                 d["packets_sent"] += 1
                 d["bytes_sent"] += pkt_size
@@ -208,51 +259,46 @@ def parse_packets(raw_packets: list) -> dict:
                     if entry not in d["suspicious_ports"]:
                         d["suspicious_ports"].append(entry)
                 if dst_ip:
-                    svc = _identify_service(dst_ip)
+                    svc = _identify_external(dst_ip)
                     if svc:
                         d["services_contacted"].add(svc)
             else:
                 d["packets_recv"] += 1
                 d["bytes_recv"] += pkt_size
 
-    # build device list with hostnames
+    # build device list
+    import sys
+    print("HOSTNAME MAP:", hostname_map, file=sys.stderr)
     device_list = []
     for ip, d in sorted(devices.items(), key=lambda x: x[1]["packets_sent"] + x[1]["packets_recv"], reverse=True):
         total_pkts = d["packets_sent"] + d["packets_recv"]
         hostname = hostname_map.get(ip, "")
+        device_name, manufacturer = _infer_device(
+            hostname, d["mac"], list(d["services_contacted"])
+        )
 
-# infer from hostname
-        manufacturer = d["manufacturer"]
-        if manufacturer == "Unknown":
-            hn = hostname.lower()
-            if any(x in hn for x in ["iphone", "macbook", "ipad", "imac", "apple"]):
-                manufacturer = "Apple"
-            elif "android" in hn:
-                manufacturer = "Android"
-            elif ip == "192.168.1.1":
-                manufacturer = "Router (Arcadyan)"
+        # special case: router
+        if ip.endswith(".1") and total_pkts > 0:
+            device_name = "Network Router"
+            manufacturer = lookup_oui(d["mac"]) if d["mac"] else "Router"
+            if manufacturer == "Unknown":
+                manufacturer = "Router"
 
-        # fallback: infer from traffic patterns when hostname also missing
-        if manufacturer == "Unknown":
-            services = list(d["services_contacted"])
-            svc_str = " ".join(services).lower()
-            if "apple" in svc_str or "icloud" in svc_str:
-                manufacturer = "Apple device"
-            elif "google" in svc_str and ip != "192.168.1.1":
-                manufacturer = "Android device"
+        flagged = manufacturer == "Unknown" and not hostname
+
         device_list.append({
             "ip": ip,
             "mac": d["mac"],
-            "manufacturer": d["manufacturer"],
+            "manufacturer": manufacturer,
             "hostname": hostname,
+            "device_name": device_name,
             "packets": total_pkts,
             "bytes": d["bytes_sent"] + d["bytes_recv"],
             "bytes_sent": d["bytes_sent"],
             "bytes_recv": d["bytes_recv"],
             "suspicious_ports": d["suspicious_ports"],
-            "services": list(d["services_contacted"]),
-            "flagged": d["manufacturer"] == "Unknown" and not hostname and ip != "192.168.1.1",
-
+            "services": list(d["services_contacted"])[:4],
+            "flagged": flagged,
         })
 
     total_pkts = sum(protocol_counts.values())
@@ -278,7 +324,7 @@ def parse_packets(raw_packets: list) -> dict:
             alerts.append({
                 "severity": "high", "type": "unknown_device",
                 "title": "Unknown device on network",
-                "detail": f"{d['ip']} ({d['mac']}) — unrecognized manufacturer, {d['packets']:,} packets.",
+                "detail": f"{d['ip']} ({d['mac']}) — unrecognized device, {d['packets']:,} packets sent/received.",
                 "ip": d["ip"],
             })
         for sp in d["suspicious_ports"]:
@@ -293,13 +339,13 @@ def parse_packets(raw_packets: list) -> dict:
         alerts.append({
             "severity": "medium", "type": "retransmissions",
             "title": "Elevated TCP retransmissions",
-            "detail": f"{retransmissions:,} retransmissions ({retrans_pct}% of TCP traffic). Suggests packet loss or an unstable connection.",
+            "detail": f"{retransmissions:,} retransmissions ({retrans_pct}% of TCP). Suggests packet loss or unstable connection.",
         })
     if dns_failures > 10:
         alerts.append({
             "severity": "medium", "type": "dns_failures",
             "title": "DNS resolution failures",
-            "detail": f"{dns_failures:,} failed DNS lookups. Could indicate misconfigured DNS or connectivity issues.",
+            "detail": f"{dns_failures:,} failed DNS lookups detected.",
         })
 
     top_services = sorted(external_services.items(), key=lambda x: x[1], reverse=True)[:5]

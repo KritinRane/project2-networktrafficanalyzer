@@ -509,7 +509,7 @@ function renderDashboard(data) {
     tbody.innerHTML += `<tr>
       <td class="mono">${d.ip}</td>
       <td class="mono">${d.mac || '—'}</td>
-      <td>${d.manufacturer}</td>
+    <td>${d.device_name || d.manufacturer}</td>
       <td>${d.packets.toLocaleString()}</td>
       <td>${formatBytes(d.bytes)}</td>
       <td><span class="status-badge ${status}">${statusLabel}</span></td>

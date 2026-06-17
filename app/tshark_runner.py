@@ -24,6 +24,18 @@ TSHARK_FIELDS = [
     "-e", "_ws.col.Protocol",
 ]
 
+def run_tshark_json(pcap_path: str) -> list[dict]:
+    cmd = [
+        "tshark",
+        "-r", pcap_path,
+        "-T", "json",
+        "--no-duplicate-keys",
+        "-N", "m",  # resolve mDNS hostnames
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        raise RuntimeError(f"tshark error: {result.stderr.strip()}")
+    return json.loads(result.stdout)
 
 def run_tshark_json(pcap_path: str) -> list[dict]:
     """Run tshark on a pcap file and return parsed packet list."""

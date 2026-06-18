@@ -38,7 +38,8 @@ SUSPICIOUS_PORTS = {
     4444: 'Metasploit default', 1337: 'Common backdoor',
     31337: 'Back Orifice', 6666: 'IRC/backdoor', 6667: 'IRC',
     9001: 'Tor', 9050: 'Tor SOCKS', 5555: 'Android ADB',
-    12345: 'NetBus', 2323: 'Telnet-alt', 8888: 'C2 common',
+    12345: 'NetBus', 2323: 'Telnet-alt',
+    # 8888 removed — Jupyter, dev servers, and many apps use this legitimately
 }
 
 # Dynamic DNS providers heavily abused by malware for C2 infrastructure
@@ -661,9 +662,9 @@ class TrafficAnalyzer:
             if tr.get('type') == 'udp' and sp == 123 and is_private(src_ip):
                 self.ntp_resp_bytes[src_ip] += cap_len
 
-        # ICMP tunneling: oversized payloads (normal echo = 32–56 bytes)
+        # ICMP tunneling: very large payloads sustained across many packets
         if tr and tr.get('type') == 'icmp' and is_private(src_ip):
-            if tr.get('payload_len', 0) > 128:
+            if tr.get('payload_len', 0) > 512:
                 self.icmp_large.append({'src_ip': src_ip, 'dst_ip': dst_ip,
                                         'payload_len': tr['payload_len']})
 
@@ -750,7 +751,7 @@ class TrafficAnalyzer:
                 src_ports[key[0]].add(key[2])
                 src_ports[key[0]].add(key[3])
         for src, ports in src_ports.items():
-            if len(ports) > 20 and not src.endswith('.1'):
+            if len(ports) > 60 and not src.endswith('.1'):
                 self.anomalies.append({
                     'severity': 'high', 'category': 'port_scan',
                     'description': f'Possible port scan from {src} — {len(ports)} unique ports contacted',
@@ -765,7 +766,7 @@ class TrafficAnalyzer:
             times = [fl['start'] for key, fl in self.flows.items()
                      if len(key) == 5 and key[0] == src and key[1] == dst
                      and fl['start'] < float('inf')]
-            if len(times) < 4:
+            if len(times) < 8:
                 continue
             times.sort()
             intervals = [times[i+1] - times[i] for i in range(len(times)-1)]
@@ -844,12 +845,17 @@ class TrafficAnalyzer:
                     self.iocs.append({'type': 'suspicious_port', 'value': f'{port} ({SUSPICIOUS_PORTS[port]})'})
 
     def _detect_cleartext(self):
+        # Deduplicate by destination host — one alert per host, not per request
+        seen_hosts: set = set()
         for req in self.http_requests:
             if req.get('method') == 'POST':
-                self.anomalies.append({
-                    'severity': 'medium', 'category': 'cleartext',
-                    'description': f'HTTP POST (cleartext) to {req.get("host","?")} from {req.get("src_ip","")}',
-                })
+                host = req.get('host') or req.get('dst_ip', '?')
+                if host not in seen_hosts:
+                    seen_hosts.add(host)
+                    self.anomalies.append({
+                        'severity': 'medium', 'category': 'cleartext',
+                        'description': f'HTTP POST (cleartext) to {host} from {req.get("src_ip","")}',
+                    })
         ftp = sum(1 for k in self.flows if len(k) == 5 and (k[2] in (20,21) or k[3] in (20,21)))
         tel = sum(1 for k in self.flows if len(k) == 5 and (k[2] == 23 or k[3] == 23))
         if ftp:
@@ -874,7 +880,7 @@ class TrafficAnalyzer:
         """One internal host contacting many others over SMB = ransomware / worm spreading."""
         for src, targets in self.smb_targets.items():
             internal_targets = {t for t in targets if is_private(t) and t != src}
-            if len(internal_targets) >= 3:
+            if len(internal_targets) >= 5:
                 sample = ', '.join(sorted(internal_targets)[:3])
                 suffix = '…' if len(internal_targets) > 3 else ''
                 self.anomalies.append({
@@ -904,7 +910,7 @@ class TrafficAnalyzer:
 
     def _detect_llmnr_poisoning(self):
         """Multiple hosts answering LLMNR/NBT-NS = credential-harvesting tool (Responder)."""
-        if len(self.llmnr_senders) > 2:
+        if len(self.llmnr_senders) > 8:
             sample = ', '.join(sorted(self.llmnr_senders)[:4])
             self.anomalies.append({
                 'severity': 'high', 'category': 'llmnr_poisoning',
@@ -917,7 +923,7 @@ class TrafficAnalyzer:
 
     def _detect_ntp_amplification(self):
         """Internal host sending large volumes of NTP responses = DDoS reflector."""
-        _THRESHOLD = 50_000  # 50 KB — monlist responses are ~480 bytes each
+        _THRESHOLD = 5_000_000  # 5 MB — routers legitimately serve NTP to all LAN clients
         for src, total in self.ntp_resp_bytes.items():
             if total > _THRESHOLD:
                 self.anomalies.append({
@@ -938,7 +944,7 @@ class TrafficAnalyzer:
             rec['count']   += 1
             rec['max_len']  = max(rec['max_len'], entry['payload_len'])
         for src, stats in by_src.items():
-            if stats['count'] >= 3:
+            if stats['count'] >= 10:
                 self.anomalies.append({
                     'severity': 'high', 'category': 'icmp_tunnel',
                     'description': (

@@ -245,6 +245,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .port-suspicious { color: var(--red); font-weight: 700; }
 .svc-chip { font-size: 10px; background: var(--blue-l); color: var(--blue); border-radius: 3px; padding: 1px 6px; font-weight: 500; }
 
+/* ── DEVICE FILTER BAR ── */
+.device-filter-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #f8fafc; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.dev-search { flex: 1; min-width: 200px; padding: 6px 11px; border: 1px solid var(--border); border-radius: var(--r); font-size: 13px; color: var(--slate); background: #fff; outline: none; transition: border-color .12s; }
+.dev-search:focus { border-color: var(--blue-m); }
+.filter-group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.filter-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); margin-right: 2px; white-space: nowrap; }
+.filter-chip { padding: 4px 10px; border-radius: 99px; font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--muted); transition: all .12s; white-space: nowrap; }
+.filter-chip:hover { background: var(--border); color: var(--slate); }
+.filter-chip.active { background: var(--navy); color: #fff; border-color: var(--navy); }
+.dev-count { font-size: 12px; color: var(--muted); margin-left: auto; white-space: nowrap; }
+
 /* protocol bars in tab */
 .proto-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid #f1f5f9; }
 .proto-row:last-child { border-bottom: none; }
@@ -446,6 +457,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
       <div class="tab-pane active" id="tab-devices">
         <div class="table-card">
+          <div class="device-filter-bar">
+            <input type="text" id="dev-search" class="dev-search" placeholder="Search IP, name, hostname, MAC…" oninput="filterDevices()">
+            <div class="filter-group">
+              <span class="filter-lbl">Status</span>
+              <button class="filter-chip active" data-filter="status" data-val="" onclick="setDevFilter(this,'status')">All</button>
+              <button class="filter-chip" data-filter="status" data-val="known" onclick="setDevFilter(this,'status')">Known</button>
+              <button class="filter-chip" data-filter="status" data-val="review" onclick="setDevFilter(this,'status')">Review</button>
+              <button class="filter-chip" data-filter="status" data-val="flagged" onclick="setDevFilter(this,'status')">Flagged</button>
+            </div>
+            <div class="filter-group" id="src-filter-group" style="display:none">
+              <span class="filter-lbl">Source</span>
+              <button class="filter-chip active" data-filter="src" data-val="" onclick="setDevFilter(this,'src')">All</button>
+              <button class="filter-chip" data-filter="src" data-val="both" onclick="setDevFilter(this,'src')">Active + Passive</button>
+              <button class="filter-chip" data-filter="src" data-val="active_only" onclick="setDevFilter(this,'src')">Active Only</button>
+              <button class="filter-chip" data-filter="src" data-val="passive_only" onclick="setDevFilter(this,'src')">Passive Only</button>
+            </div>
+            <span class="dev-count" id="dev-count"></span>
+          </div>
           <table id="device-table">
             <thead id="device-thead"></thead>
             <tbody id="device-tbody"></tbody>
@@ -482,8 +511,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 const API = 'http://localhost:8000';
 let selectedPcap = null;
 let selectedCsv  = null;
-let _protoChart  = null;
-let _sevChart    = null;
+let _protoChart    = null;
+let _sevChart      = null;
+let _allDevices    = [];
+let _hasScanGlobal = false;
+let _devFilters    = { status: '', src: '', q: '' };
 
 // ── DROP ZONES ──────────────────────────────────────────────────────────────
 function initDZ(zoneId, inputId, setter) {
@@ -908,8 +940,24 @@ function renderCharts(a) {
 }
 
 // ── DEVICE TABLE ─────────────────────────────────────────────────────────────
+function _devStatus(d) {
+  if (!d.flagged) return 'known';
+  return d.manufacturer === 'Unknown' ? 'flagged' : 'review';
+}
+
 function renderDeviceTable(devices, hasScan) {
-  const maxBytes = Math.max(...devices.map(d => (d.bytes_sent||0)+(d.bytes_recv||0)), 1);
+  _allDevices    = devices;
+  _hasScanGlobal = hasScan;
+
+  // Show source filter only when scan data is present
+  document.getElementById('src-filter-group').style.display = hasScan ? 'flex' : 'none';
+
+  // Reset filter state
+  _devFilters = { status: '', src: '', q: '' };
+  document.getElementById('dev-search').value = '';
+  document.querySelectorAll('.filter-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.val === '')
+  );
 
   document.getElementById('device-thead').innerHTML = hasScan ? `
     <tr>
@@ -921,19 +969,59 @@ function renderDeviceTable(devices, hasScan) {
       <th>MAC</th><th>Traffic</th><th>Services</th><th>Status</th>
     </tr>`;
 
-  const tbody = document.getElementById('device-tbody');
+  filterDevices();
+}
+
+function setDevFilter(el, key) {
+  document.querySelectorAll(`.filter-chip[data-filter="${key}"]`).forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  _devFilters[key] = el.dataset.val;
+  filterDevices();
+}
+
+function filterDevices() {
+  _devFilters.q = (document.getElementById('dev-search').value || '').toLowerCase().trim();
+  const { status, src, q } = _devFilters;
+
+  let list = _allDevices;
+  if (status) list = list.filter(d => _devStatus(d) === status);
+  if (src)    list = list.filter(d => d.data_source === src);
+  if (q)      list = list.filter(d =>
+    (d.ip           || '').toLowerCase().includes(q) ||
+    (d.device_name  || '').toLowerCase().includes(q) ||
+    (d.hostname     || '').toLowerCase().includes(q) ||
+    (d.mac          || '').toLowerCase().includes(q) ||
+    (d.manufacturer || '').toLowerCase().includes(q)
+  );
+
+  const countEl = document.getElementById('dev-count');
+  countEl.textContent = list.length === _allDevices.length
+    ? `${_allDevices.length} device${_allDevices.length !== 1 ? 's' : ''}`
+    : `${list.length} of ${_allDevices.length}`;
+
+  renderDeviceRows(list);
+}
+
+function renderDeviceRows(devices) {
+  const maxBytes = Math.max(..._allDevices.map(d => (d.bytes_sent||0)+(d.bytes_recv||0)), 1);
+  const colCount = _hasScanGlobal ? 7 : 6;
+  const tbody    = document.getElementById('device-tbody');
   tbody.innerHTML = '';
 
+  if (devices.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="${colCount}" style="text-align:center;padding:28px;color:var(--muted)">No devices match the current filter</td></tr>`;
+    return;
+  }
+
   devices.forEach(d => {
-    const status      = d.flagged ? (d.manufacturer==='Unknown' ? 'flagged' : 'review') : 'known';
+    const status      = _devStatus(d);
     const statusLabel = { flagged:'Flagged', review:'Review', known:'Known' }[status];
     const hostname    = d.hostname ? `<div class="dev-host">${escHtml(d.hostname)}</div>` : '';
     const svcsHtml    = (d.services||[]).length > 0
       ? (d.services||[]).map(sv => `<span class="svc-chip">${escHtml(sv.replace(/\(.*?\)/g,'').trim())}</span>`).join(' ')
       : '';
 
-    // mini traffic bar
-    const totalB = (d.bytes_sent||0) + (d.bytes_recv||0);
+    const totalB  = (d.bytes_sent||0) + (d.bytes_recv||0);
     const pctUp   = maxBytes > 0 ? ((d.bytes_sent||0)/maxBytes*100).toFixed(1) : 0;
     const pctDown = maxBytes > 0 ? ((d.bytes_recv||0)/maxBytes*100).toFixed(1) : 0;
     const trafficBar = totalB > 0
@@ -943,7 +1031,7 @@ function renderDeviceTable(devices, hasScan) {
          </div>`
       : '<span style="font-size:11px;color:#cbd5e1">No traffic</span>';
 
-    if (!hasScan) {
+    if (!_hasScanGlobal) {
       tbody.innerHTML += `<tr>
         <td class="mono">${escHtml(d.ip)}</td>
         <td><div class="dev-name">${escHtml(d.device_name||d.manufacturer||'Unknown')}</div>${hostname}</td>

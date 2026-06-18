@@ -588,9 +588,16 @@ def _score(alerts: list) -> tuple:
         'unknown_device':         3,
         'mac_privacy':            0,
     }
+    # Each threat TYPE is scored at most once. Finding 10 unknown devices is
+    # not 10× more dangerous than finding 1 — it's still the same threat category.
+    # Multiple alerts of the same type confirm the finding but don't inflate the score.
+    scored_types: set = set()
     score = 0
     for a in alerts:
-        score += _TYPE_WEIGHTS.get(a['type'], {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'info': 0}.get(a['severity'], 0))
+        atype = a['type']
+        if atype not in scored_types:
+            scored_types.add(atype)
+            score += _TYPE_WEIGHTS.get(atype, {'critical': 20, 'high': 10, 'medium': 5, 'low': 2, 'info': 0}.get(a['severity'], 0))
     score = min(score, 100)
     risk_level = ('CRITICAL' if score >= 55 else 'HIGH' if score >= 30
                   else 'MEDIUM' if score >= 12 else 'LOW' if score > 0 else 'CLEAN')

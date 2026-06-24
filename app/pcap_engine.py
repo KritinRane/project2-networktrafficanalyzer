@@ -42,6 +42,27 @@ SUSPICIOUS_PORTS = {
     # 8888 removed — Jupyter, dev servers, and many apps use this legitimately
 }
 
+# Legitimate SaaS/CDN domains that use long subdomains (auth tokens, CDN paths).
+# DNS tunnel detection is suppressed for these to avoid false positives.
+_DNS_TUNNEL_WHITELIST = frozenset({
+    'atl-paas.net', 'atlassian.net', 'atlassian.com',      # Atlassian (Jira, Confluence)
+    'azure.com', 'azure.net', 'azurewebsites.net',         # Azure (App Insights, APIs)
+    'cloudfront.net',                                     # AWS CloudFront
+    'akamaihd.net', 'akamai.net', 'edgekey.net', 'edgesuite.net',  # Akamai
+    'fastly.net', 'fastlylb.net',                        # Fastly
+    'amazonaws.com', 'awsstatic.com',                    # AWS / S3
+    'msecnd.net', 'windows.net', 'azureedge.net',        # Microsoft Azure CDN
+    'trafficmanager.net', 'microsoftonline.com',
+    'office.net', 'sharepoint.com', 'live.com', 'outlook.com',
+    'apple-cloudkit.com', 'icloud.com', 'cdn-apple.com', 'mzstatic.com',
+    'googleapis.com', 'googleusercontent.com', 'gstatic.com', 'googlevideo.com',
+    'slack.com', 'slack-edge.com',
+    'salesforce.com', 'force.com',
+    'zoom.us', 'zoomgov.com',
+    'cloudflare.com', 'cloudflaressl.com',
+    'twilio.com', 'sendgrid.net',
+})
+
 # Dynamic DNS providers heavily abused by malware for C2 infrastructure
 _C2_DOMAINS = frozenset({
     'duckdns.org', 'no-ip.com', 'no-ip.biz', 'hopto.org', 'zapto.org',
@@ -75,10 +96,19 @@ PRIVATE_RANGES = [
     ipaddress.ip_network('224.0.0.0/4'),
 ]
 
+PRIVATE_RANGES_V6 = [
+    ipaddress.ip_network('::1/128'),    # loopback
+    ipaddress.ip_network('fc00::/7'),   # unique local (fc00:: and fd00::)
+    ipaddress.ip_network('fe80::/10'),  # link-local
+    ipaddress.ip_network('ff00::/8'),   # multicast
+]
+
 
 def is_private(ip_str: str) -> bool:
     try:
         addr = ipaddress.ip_address(ip_str)
+        if isinstance(addr, ipaddress.IPv6Address):
+            return any(addr in net for net in PRIVATE_RANGES_V6)
         return any(addr in net for net in PRIVATE_RANGES)
     except Exception:
         return False
@@ -745,16 +775,22 @@ class TrafficAnalyzer:
         return (src, dst, sp, dp, proto)
 
     def _detect_port_scan(self):
-        src_ports = defaultdict(set)
+        # Track the lower port of each flow as a proxy for the destination service port.
+        # Using min() avoids counting ephemeral source ports (typically >32767), which
+        # would otherwise make any device with many TCP connections look like a scanner.
+        svc_ports = defaultdict(set)
         for key in self.flows:
             if len(key) == 5:
-                src_ports[key[0]].add(key[2])
-                src_ports[key[0]].add(key[3])
-        for src, ports in src_ports.items():
-            if len(ports) > 60 and not src.endswith('.1'):
+                svc_ports[key[0]].add(min(key[2], key[3]))
+        for src, ports in svc_ports.items():
+            # Exclude: IPv4 routers (.1), IPv6 loopback/gateway (::1), link-local (fe80::)
+            if (len(ports) > 70
+                    and not src.endswith('.1')
+                    and not src.endswith('::1')
+                    and not src.startswith('fe80')):
                 self.anomalies.append({
                     'severity': 'high', 'category': 'port_scan',
-                    'description': f'Possible port scan from {src} — {len(ports)} unique ports contacted',
+                    'description': f'Possible port scan from {src} — {len(ports)} unique service ports contacted',
                     'source': src,
                 })
                 self.iocs.append({'type': 'scanner_ip', 'value': src})
@@ -791,6 +827,8 @@ class TrafficAnalyzer:
             if len(parts) > 2:
                 domain_lengths['.'.join(parts[-2:])].append(len('.'.join(parts[:-2])))
         for domain, lengths in domain_lengths.items():
+            if domain in _DNS_TUNNEL_WHITELIST:
+                continue
             if len(lengths) >= 5:
                 avg = sum(lengths) / len(lengths)
                 if avg > 30 and len(lengths) > 10:
@@ -818,13 +856,13 @@ class TrafficAnalyzer:
             src, dst = key[0], key[1]
             if is_private(dst):
                 continue
-            if fl['payload_bytes'] > 10 * 1024 * 1024:
+            if fl['payload_bytes'] > 50 * 1024 * 1024:
                 self.anomalies.append({
                     'severity': 'high', 'category': 'exfiltration',
                     'description': f'Large outbound transfer: {src} → {dst} ({human_bytes(fl["payload_bytes"])})',
                 })
             duration = fl['end'] - fl['start']
-            if duration > 0 and fl['payload_bytes'] / duration > 5 * 1024 * 1024:
+            if duration > 0 and fl['payload_bytes'] / duration > 20 * 1024 * 1024:
                 self.anomalies.append({
                     'severity': 'medium', 'category': 'exfiltration',
                     'description': f'High-rate transfer: {src} → {dst} at {human_bytes(int(fl["payload_bytes"]/duration))}/s',

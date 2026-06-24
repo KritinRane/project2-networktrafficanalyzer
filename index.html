@@ -1614,38 +1614,46 @@ async function runSpeedTest() {
     pings.sort((a, b) => a - b);
     const pingMs = pings[2].toFixed(0);
 
-    // ── Download: stream 4 MB chunks for 8 seconds ───────────────────────────
-    status.textContent = '⏱ Measuring download…';
+    // ── Download: 4 parallel streams for 8 seconds ───────────────────────────
     const DL_BYTES = 4 * 1024 * 1024;
     let dlBytes = 0;
     const dlStart = performance.now();
-    while (performance.now() - dlStart < 8000) {
-      const res = await authFetch(`${API}/api/speedtest/chunk?bytes=${DL_BYTES}`, { cache: 'no-store' });
-      dlBytes += (await res.arrayBuffer()).byteLength;
+    const dlTicker = setInterval(() => {
       const secs = (performance.now() - dlStart) / 1000;
-      status.textContent = `⏱ Download: ${(dlBytes * 8 / 1e6 / secs).toFixed(1)} Mbps… (${secs.toFixed(0)}s)`;
-    }
+      if (secs > 0) status.textContent = `⏱ Download: ${(dlBytes * 8 / 1e6 / secs).toFixed(1)} Mbps… (${secs.toFixed(0)}s)`;
+    }, 400);
+    await Promise.all(Array.from({ length: 4 }, async () => {
+      while (performance.now() - dlStart < 8000) {
+        const res = await authFetch(`${API}/api/speedtest/chunk?bytes=${DL_BYTES}`, { cache: 'no-store' });
+        dlBytes += (await res.arrayBuffer()).byteLength;
+      }
+    }));
+    clearInterval(dlTicker);
     const dlMbps = (dlBytes * 8 / 1e6 / ((performance.now() - dlStart) / 1000)).toFixed(1);
     downEl.textContent  = dlMbps;
     downLbl.textContent = 'Mbps Download ⚡';
 
-    // ── Upload: push 1 MB chunks for 8 seconds ────────────────────────────────
-    status.textContent = '⏱ Measuring upload…';
+    // ── Upload: 4 parallel streams for 8 seconds ─────────────────────────────
     const UL_BYTES  = 1 * 1024 * 1024;
     const ulPayload = new Uint8Array(UL_BYTES);
     let ulBytes = 0;
     const ulStart = performance.now();
-    while (performance.now() - ulStart < 8000) {
-      await authFetch(`${API}/api/speedtest/upload-chunk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: ulPayload,
-        cache: 'no-store',
-      });
-      ulBytes += UL_BYTES;
+    const ulTicker = setInterval(() => {
       const secs = (performance.now() - ulStart) / 1000;
-      status.textContent = `⏱ Upload: ${(ulBytes * 8 / 1e6 / secs).toFixed(1)} Mbps… (${secs.toFixed(0)}s)`;
-    }
+      if (secs > 0) status.textContent = `⏱ Upload: ${(ulBytes * 8 / 1e6 / secs).toFixed(1)} Mbps… (${secs.toFixed(0)}s)`;
+    }, 400);
+    await Promise.all(Array.from({ length: 4 }, async () => {
+      while (performance.now() - ulStart < 8000) {
+        await authFetch(`${API}/api/speedtest/upload-chunk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: ulPayload,
+          cache: 'no-store',
+        });
+        ulBytes += UL_BYTES;
+      }
+    }));
+    clearInterval(ulTicker);
     const ulMbps = (ulBytes * 8 / 1e6 / ((performance.now() - ulStart) / 1000)).toFixed(1);
     upEl.textContent  = ulMbps;
     upLbl.textContent = 'Mbps Upload ⚡';

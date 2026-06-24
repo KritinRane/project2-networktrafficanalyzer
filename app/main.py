@@ -3,7 +3,7 @@ load_dotenv()  # must run before any module reads os.getenv at import time
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from app.routers import analyze, speedtest, auth
 import jwt, os
 
@@ -46,3 +46,7 @@ app.include_router(speedtest.router, prefix="/api")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/")
+def serve_index():
+    return FileResponse("index.html")

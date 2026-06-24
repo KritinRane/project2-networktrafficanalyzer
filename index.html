@@ -1632,7 +1632,9 @@ async function runSpeedTest() {
     // ── Upload: push 1 MB chunks for 8 seconds ────────────────────────────────
     status.textContent = '⏱ Measuring upload…';
     const UL_BYTES  = 1 * 1024 * 1024;
-    const ulPayload = crypto.getRandomValues(new Uint8Array(UL_BYTES));
+    const ulPayload = new Uint8Array(UL_BYTES);
+    for (let i = 0; i < UL_BYTES; i += 65536)
+      crypto.getRandomValues(ulPayload.subarray(i, Math.min(i + 65536, UL_BYTES)));
     let ulBytes = 0;
     const ulStart = performance.now();
     while (performance.now() - ulStart < 8000) {

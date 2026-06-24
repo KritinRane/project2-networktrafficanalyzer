@@ -354,6 +354,17 @@ def _build_devices(engine: dict, hostname_map: dict, analyzer: TrafficAnalyzer,
     for ip in all_ips:
         if ip.startswith('fe80') or ip.startswith('169.254'):
             continue
+        if ip.startswith('ff'):          # IPv6 multicast (ff02::fb, ff02::1, etc.)
+            continue
+        # Skip IPv4 broadcast and multicast — these are not real devices
+        if ip.endswith('.255') or ip == '255.255.255.255':
+            continue
+        try:
+            _first = int(ip.split('.')[0])
+            if 224 <= _first <= 239:
+                continue
+        except (ValueError, IndexError):
+            pass
 
         # ── Step 2: pull PCAP data for this IP ───────────────────────────────
         pcap_macs    = [m for m in arp_table.get(ip, []) if m and m != '00:00:00:00:00:00']

@@ -6,11 +6,6 @@ import jwt
 
 router = APIRouter()
 
-_SECRET   = os.getenv("JWT_SECRET", "ntg-dev-secret-change-in-prod")
-_USERNAME = os.getenv("APP_USERNAME", "admin")
-_PASSWORD = os.getenv("APP_PASSWORD", "nerds2go")
-_EXPIRE_H = int(os.getenv("TOKEN_EXPIRE_HOURS", "8"))
-
 
 class LoginBody(BaseModel):
     username: str
@@ -19,11 +14,16 @@ class LoginBody(BaseModel):
 
 @router.post("/auth/login")
 def login(body: LoginBody):
-    if body.username != _USERNAME or body.password != _PASSWORD:
+    secret   = os.getenv("JWT_SECRET",         "ntg-dev-secret-change-in-prod")
+    username = os.getenv("APP_USERNAME",        "admin")
+    password = os.getenv("APP_PASSWORD",        "nerds2go")
+    expire_h = int(os.getenv("TOKEN_EXPIRE_HOURS", "8"))
+
+    if body.username != username or body.password != password:
         return JSONResponse({"error": "Invalid username or password"}, status_code=401)
     payload = {
         "sub": body.username,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=_EXPIRE_H),
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=expire_h),
     }
-    token = jwt.encode(payload, _SECRET, algorithm="HS256")
+    token = jwt.encode(payload, secret, algorithm="HS256")
     return JSONResponse({"token": token})

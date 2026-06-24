@@ -16,21 +16,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_SECRET = os.getenv("JWT_SECRET", "ntg-dev-secret-change-in-prod")
 _PUBLIC = {"/api/auth/login", "/health"}
 
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    # Let CORS preflight, public endpoints, and non-API paths through
     if request.method == "OPTIONS" or path in _PUBLIC or not path.startswith("/api/"):
         return await call_next(request)
     header = request.headers.get("Authorization", "")
     if not header.startswith("Bearer "):
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    secret = os.getenv("JWT_SECRET", "ntg-dev-secret-change-in-prod")
     try:
-        jwt.decode(header[7:], _SECRET, algorithms=["HS256"])
+        jwt.decode(header[7:], secret, algorithms=["HS256"])
     except jwt.ExpiredSignatureError:
         return JSONResponse({"error": "Session expired — please sign in again"}, status_code=401)
     except jwt.InvalidTokenError:

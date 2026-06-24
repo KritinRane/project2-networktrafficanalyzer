@@ -1583,10 +1583,10 @@ function resetToUpload() {
   resetSteps();
 }
 
-// ── Live Speed Test — Official Ookla binary via backend ──────────────────────
-// Calls /api/speedtest/run which shells out to `speedtest` (brew install speedtest).
-// The binary connects to real speedtest.net servers over the internet — accurate
-// regardless of the backend being on localhost because the binary reaches out itself.
+// ── Live Speed Test — browser streaming (works on any hosted server) ─────────
+// Downloads chunks from /api/speedtest/chunk and uploads to /api/speedtest/upload-chunk.
+// Because the data travels between the client and the Railway server over the real
+// internet, these numbers reflect the client's actual connection speed.
 async function runSpeedTest() {
   const btn     = document.getElementById('speedtest-btn');
   const status  = document.getElementById('speedtest-status');
@@ -1602,35 +1602,60 @@ async function runSpeedTest() {
   downLbl.textContent = 'Mbps Download';
   upLbl.textContent   = 'Mbps Upload';
 
-  let secs = 0;
-  const ticker = setInterval(() => {
-    secs++;
-    status.textContent = `⏱ Running speed test… ${secs}s (takes ~25s)`;
-  }, 1000);
-
   try {
-    const res  = await authFetch(`${API}/api/speedtest/run`, { cache: 'no-store' });
-    const data = await res.json();
-    clearInterval(ticker);
-
-    if (data.error) {
-      status.textContent = `Error: ${data.error}`;
-      downEl.textContent = 'err';
-      upEl.textContent   = 'err';
-    } else {
-      downEl.textContent  = data.download_mbps.toFixed(1);
-      upEl.textContent    = data.upload_mbps.toFixed(1);
-      downLbl.textContent = 'Mbps Download ⚡';
-      upLbl.textContent   = 'Mbps Upload ⚡';
-      const ping   = data.ping_ms ? ` · ping ${data.ping_ms} ms`  : '';
-      const server = data.server  ? ` via ${data.server}`          : '';
-      status.textContent = `✓ Complete${ping}${server} · ${new Date().toLocaleTimeString()}`;
+    // ── Ping: 5 round-trips, take median ──────────────────────────────────────
+    status.textContent = '⏱ Measuring latency…';
+    const pings = [];
+    for (let i = 0; i < 5; i++) {
+      const t0 = performance.now();
+      await authFetch(`${API}/api/speedtest/ping`, { cache: 'no-store' });
+      pings.push(performance.now() - t0);
     }
+    pings.sort((a, b) => a - b);
+    const pingMs = pings[2].toFixed(0);
+
+    // ── Download: stream 4 MB chunks for 8 seconds ───────────────────────────
+    status.textContent = '⏱ Measuring download…';
+    const DL_BYTES = 4 * 1024 * 1024;
+    let dlBytes = 0;
+    const dlStart = performance.now();
+    while (performance.now() - dlStart < 8000) {
+      const res = await authFetch(`${API}/api/speedtest/chunk?bytes=${DL_BYTES}`, { cache: 'no-store' });
+      dlBytes += (await res.arrayBuffer()).byteLength;
+      const secs = (performance.now() - dlStart) / 1000;
+      status.textContent = `⏱ Download: ${(dlBytes * 8 / 1e6 / secs).toFixed(1)} Mbps… (${secs.toFixed(0)}s)`;
+    }
+    const dlMbps = (dlBytes * 8 / 1e6 / ((performance.now() - dlStart) / 1000)).toFixed(1);
+    downEl.textContent  = dlMbps;
+    downLbl.textContent = 'Mbps Download ⚡';
+
+    // ── Upload: push 1 MB chunks for 8 seconds ────────────────────────────────
+    status.textContent = '⏱ Measuring upload…';
+    const UL_BYTES  = 1 * 1024 * 1024;
+    const ulPayload = crypto.getRandomValues(new Uint8Array(UL_BYTES));
+    let ulBytes = 0;
+    const ulStart = performance.now();
+    while (performance.now() - ulStart < 8000) {
+      await authFetch(`${API}/api/speedtest/upload-chunk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: ulPayload,
+        cache: 'no-store',
+      });
+      ulBytes += UL_BYTES;
+      const secs = (performance.now() - ulStart) / 1000;
+      status.textContent = `⏱ Upload: ${(ulBytes * 8 / 1e6 / secs).toFixed(1)} Mbps… (${secs.toFixed(0)}s)`;
+    }
+    const ulMbps = (ulBytes * 8 / 1e6 / ((performance.now() - ulStart) / 1000)).toFixed(1);
+    upEl.textContent  = ulMbps;
+    upLbl.textContent = 'Mbps Upload ⚡';
+
+    status.textContent = `✓ Complete · ping ${pingMs} ms · ${new Date().toLocaleTimeString()}`;
+
   } catch (e) {
-    clearInterval(ticker);
     downEl.textContent = 'err';
     upEl.textContent   = 'err';
-    status.textContent = 'Failed — is the backend running?';
+    status.textContent = `Failed: ${e.message}`;
   }
 
   btn.disabled = false;

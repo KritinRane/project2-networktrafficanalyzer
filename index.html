@@ -814,7 +814,7 @@ body.user-mode .user-panel { display: block; }
 </div><!-- /main -->
 
 <script>
-const API = 'http://localhost:8000';
+const API = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
 // ── AUTH ─────────────────────────────────────────────────────────────────────
 function getToken() { return sessionStorage.getItem('ntg_token') || ''; }

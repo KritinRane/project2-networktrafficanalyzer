@@ -73,7 +73,9 @@ body {
 }
 .breadcrumb { font-size: 12px; color: var(--sub); display: flex; align-items: center; gap: 6px; }
 .breadcrumb .sep { opacity: .35; }
-.breadcrumb .current { color: var(--text); font-weight: 600; }
+.breadcrumb .current { color: var(--text); font-weight: 600; cursor: pointer; transition: color .12s; }
+.breadcrumb .current:hover { color: var(--blue); }
+.breadcrumb .page-name { color: var(--sub); }
 .topnav-right { display: flex; align-items: center; gap: 7px; }
 .tn-file-info { font-size: 11px; color: var(--muted); text-align: right; line-height: 1.4; }
 .tn-btn { padding: 5px 12px; border-radius: var(--r); font-size: 12px; font-weight: 500; cursor: pointer; border: 1px solid var(--border2); background: transparent; color: var(--sub); transition: all .12s; white-space: nowrap; }
@@ -142,14 +144,18 @@ body {
 
 .dash-card {
   background: var(--card); border-radius: var(--r2); border: 1px solid var(--border);
-  padding: 18px 20px; transition: border-color .14s, background .14s; position: relative; overflow: hidden;
+  padding: 18px 20px; transition: border-color .14s, background .14s, transform .14s; position: relative; overflow: hidden;
+  cursor: pointer; text-align: left; width: 100%; color: inherit; font: inherit;
 }
-.dash-card:hover { border-color: var(--border2); background: var(--card2); }
+.dash-card:hover { border-color: var(--blue); background: var(--card2); transform: translateY(-1px); }
+.dash-card:active { transform: translateY(0); }
+.dash-card:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .dash-card.span-2 { grid-column: span 2; }
 
 .dc-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .dc-title { font-size: 12px; font-weight: 600; color: var(--sub); }
-.dc-arrow { color: var(--muted); font-size: 15px; }
+.dc-arrow { color: var(--muted); font-size: 15px; transition: transform .14s, color .14s; }
+.dash-card:hover .dc-arrow { color: var(--blue); transform: translateX(2px); }
 .dc-icon { width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 10px; }
 .dc-icon svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .dc-icon.blue   { background: var(--blue-l);   color: var(--blue); }
@@ -212,11 +218,6 @@ body {
 .dc-action-btn.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
 .dc-action-btn.primary:hover { background: #2563eb; }
 
-/* ── DEV/USER VISIBILITY ── */
-body.user-mode .dev-only { display: none !important; }
-.user-panel { display: none; }
-body.user-mode .user-panel { display: block; }
-
 /* ── DETAIL DIVIDER ── */
 .detail-divider { display: flex; align-items: center; gap: 14px; padding: 0 28px; margin: 8px 0 20px; }
 .detail-divider-line { flex: 1; height: 1px; background: var(--border); }
@@ -224,6 +225,12 @@ body.user-mode .user-panel { display: block; }
 
 /* ── DETAIL CONTENT ── */
 .detail-content { padding: 0 28px; }
+
+/* ── PAGE NAVIGATION ── */
+.page-section { display: none; padding-bottom: 8px; }
+.page-section.active { display: block; animation: pg-fade .16s ease; }
+@keyframes pg-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.page-section > .detail-content > .section-hd h3 { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
 
 /* Charts */
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
@@ -351,9 +358,10 @@ body.user-mode .user-panel { display: block; }
 .dash-footer { border-top: 1px solid var(--border); margin-top: 40px; padding-top: 14px; display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 11px; flex-wrap: wrap; gap: 6px; }
 
 @media print {
-  .sidebar, .topnav, .tab-bar { display: none !important; }
+  .sidebar, .topnav, .tab-bar, .dash-card .dc-arrow { display: none !important; }
   .main { margin-left: 0; }
-  .tab-pane { display: block !important; }
+  .tab-pane, .page-section { display: block !important; }
+  .dash-card { break-inside: avoid; cursor: default; }
 }
 
 /* User panel */
@@ -440,26 +448,26 @@ body.user-mode .user-panel { display: block; }
   <div class="sb-logo">
     <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
   </div>
-  <button class="sb-btn active" title="Dashboard">
+  <button class="sb-btn active" title="Dashboard" data-page="dashboard" onclick="showPage('dashboard')">
     <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
   </button>
-  <button class="sb-btn" title="Devices">
+  <button class="sb-btn" title="Devices" data-page="devices" onclick="showPage('devices')">
     <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
   </button>
-  <button class="sb-btn" title="Network">
+  <button class="sb-btn" title="Network" data-page="network" onclick="showPage('network')">
     <svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>
   </button>
-  <button class="sb-btn" title="Security">
+  <button class="sb-btn" title="Security" data-page="security" onclick="showPage('security')">
     <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
   </button>
   <div class="sb-divider"></div>
-  <button class="sb-btn" title="Alerts">
+  <button class="sb-btn" title="Alerts" data-page="alerts" onclick="showPage('alerts')">
     <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
   </button>
-  <button class="sb-btn" title="Reports">
+  <button class="sb-btn" title="Reports" data-page="reports" onclick="showPage('reports')">
     <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
   </button>
-  <button class="sb-btn" title="Customer">
+  <button class="sb-btn" title="Customer" data-page="customer" onclick="showPage('customer')">
     <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
   </button>
 </div>
@@ -470,17 +478,13 @@ body.user-mode .user-panel { display: block; }
 <!-- TOP NAV -->
 <div class="topnav">
   <div class="breadcrumb">
-    <span>All Assessments</span>
+    <span class="current" id="nav-lab-name" onclick="showPage('dashboard')" title="Back to Dashboard">Network Assessment</span>
     <span class="sep">/</span>
-    <span class="current" id="nav-lab-name">Network Assessment</span>
+    <span class="page-name" id="nav-page-name">Overview</span>
   </div>
   <div class="topnav-right">
     <span class="tn-file-info" id="nav-file-info"></span>
     <div id="topnav-dash-btns" style="display:none;align-items:center;gap:6px;flex-wrap:wrap">
-      <div class="view-toggle">
-        <button class="mode-btn active" id="mode-dev" onclick="setMode('developer')">Developer View</button>
-        <button class="mode-btn" id="mode-user" onclick="setMode('user')">User View</button>
-      </div>
       <button class="tn-btn" onclick="resetToUpload()">← New Assessment</button>
       <button class="tn-btn primary" onclick="window.print()">Export Report</button>
     </div>
@@ -559,11 +563,12 @@ body.user-mode .user-panel { display: block; }
     </div>
   </div>
 
-  <!-- CARDS GRID -->
+  <!-- ═══════════════════════ PAGE: DASHBOARD (Overview) ═══════════════════════ -->
+  <div class="page-section active" id="page-dashboard">
   <div class="cards-grid">
 
     <!-- 1: Risk Status -->
-    <div class="dash-card">
+    <div class="dash-card" role="button" tabindex="0" onclick="showPage('security')" onkeydown="cardKey(event,'security')" title="View security details">
       <div class="dc-head">
         <span class="dc-title">Network Risk Status</span>
         <span class="dc-arrow">›</span>
@@ -574,7 +579,7 @@ body.user-mode .user-panel { display: block; }
     </div>
 
     <!-- 2: Devices List -->
-    <div class="dash-card">
+    <div class="dash-card" role="button" tabindex="0" onclick="showPage('devices')" onkeydown="cardKey(event,'devices')" title="View device inventory">
       <div class="dc-head">
         <span class="dc-title">Devices List</span>
         <span class="dc-arrow">›</span>
@@ -595,7 +600,7 @@ body.user-mode .user-panel { display: block; }
     </div>
 
     <!-- 3: Network Performance -->
-    <div class="dash-card">
+    <div class="dash-card" role="button" tabindex="0" onclick="showPage('network')" onkeydown="cardKey(event,'network')" title="View network details">
       <div class="dc-head">
         <span class="dc-title">Network Performance</span>
         <span class="dc-arrow">›</span>
@@ -614,7 +619,7 @@ body.user-mode .user-panel { display: block; }
         </div>
       </div>
       <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;align-items:flex-start">
-        <button id="speedtest-btn" onclick="runSpeedTest()" style="
+        <button id="speedtest-btn" onclick="event.stopPropagation(); runSpeedTest()" style="
           background:var(--teal);color:#fff;border:none;border-radius:6px;
           padding:5px 12px;font-size:12px;cursor:pointer;font-weight:600;letter-spacing:.3px;">
           ⚡ Live Speed Test
@@ -624,7 +629,7 @@ body.user-mode .user-panel { display: block; }
     </div>
 
     <!-- 4: Network Security -->
-    <div class="dash-card">
+    <div class="dash-card" role="button" tabindex="0" onclick="showPage('alerts')" onkeydown="cardKey(event,'alerts')" title="View all alerts">
       <div class="dc-head">
         <span class="dc-title">Network Security</span>
         <span class="dc-arrow">›</span>
@@ -639,7 +644,7 @@ body.user-mode .user-panel { display: block; }
     </div>
 
     <!-- 5: WAN Performance -->
-    <div class="dash-card" id="card-wan-wrap">
+    <div class="dash-card" id="card-wan-wrap" role="button" tabindex="0" onclick="showPage('reports')" onkeydown="cardKey(event,'reports')" title="View external services report">
       <div class="dc-head">
         <span class="dc-title">WAN Performance</span>
         <span class="dc-arrow">›</span>
@@ -653,7 +658,7 @@ body.user-mode .user-panel { display: block; }
     </div>
 
     <!-- 6: Operator Activities (spans 2 cols) -->
-    <div class="dash-card span-2">
+    <div class="dash-card span-2" role="button" tabindex="0" onclick="showPage('alerts')" onkeydown="cardKey(event,'alerts')" title="View all alerts">
       <div class="dc-head">
         <span class="dc-title">Operator Activities</span>
         <span class="dc-arrow">›</span>
@@ -664,7 +669,7 @@ body.user-mode .user-panel { display: block; }
     </div>
 
     <!-- 7: Data Sources -->
-    <div class="dash-card">
+    <div class="dash-card" role="button" tabindex="0" onclick="showPage('reports')" onkeydown="cardKey(event,'reports')" title="View data sources report">
       <div class="dc-head">
         <span class="dc-title">Data Sources</span>
         <span class="dc-arrow">›</span>
@@ -678,7 +683,7 @@ body.user-mode .user-panel { display: block; }
     </div>
 
     <!-- 8: Logging & Reports -->
-    <div class="dash-card">
+    <div class="dash-card" role="button" tabindex="0" onclick="showPage('reports')" onkeydown="cardKey(event,'reports')" title="View reports">
       <div class="dc-head">
         <span class="dc-title">Logging &amp; Reports</span>
         <span class="dc-arrow">›</span>
@@ -688,85 +693,20 @@ body.user-mode .user-panel { display: block; }
       </div>
       <div style="font-size:12px;color:var(--sub);margin-top:4px">Get reports and log activities</div>
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-        <button class="dc-action-btn primary" onclick="window.print()">Export Report</button>
-        <button class="dc-action-btn" onclick="resetToUpload()">New Assessment</button>
+        <button class="dc-action-btn primary" onclick="event.stopPropagation(); window.print()">Export Report</button>
+        <button class="dc-action-btn" onclick="event.stopPropagation(); resetToUpload()">New Assessment</button>
       </div>
     </div>
 
   </div><!-- /cards-grid -->
+  </div><!-- /page-dashboard -->
 
-  <!-- User panel -->
-  <div style="padding:0 28px">
-    <div id="user-panel" class="user-panel"></div>
-  </div>
-
-  <!-- Detail divider -->
-  <div class="detail-divider dev-only">
-    <div class="detail-divider-line"></div>
-    <span class="detail-divider-label">Detailed Analysis</span>
-    <div class="detail-divider-line"></div>
-  </div>
-
-  <!-- Detail content -->
-  <div class="detail-content">
-
-    <!-- Charts -->
-    <div class="charts-row dev-only" id="charts-row">
-      <div class="chart-card">
-        <h3>Protocol Breakdown</h3>
-        <div class="chart-wrap"><canvas id="proto-chart"></canvas></div>
-      </div>
-      <div class="chart-card">
-        <h3>Alert Severity</h3>
-        <div class="chart-wrap"><canvas id="sev-chart"></canvas></div>
-      </div>
-    </div>
-
-    <!-- Priority Actions -->
-    <div class="priority-section dev-only" id="priority-section" style="display:none">
-      <h3>
-        <svg viewBox="0 0 20 20"><path d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"/></svg>
-        Priority Actions
-      </h3>
-      <div class="priority-list" id="priority-list"></div>
-    </div>
-
-    <!-- Mismatch -->
-    <div class="mismatch-card dev-only" id="mismatch-card" style="display:none">
-      <div class="mc-head">
-        <div class="mc-icon">⚠</div>
-        <div class="mc-title">
-          <h4>Active vs. Passive Cross-Reference</h4>
-          <p>Comparing the active scan with the packet capture revealed identity mismatches.</p>
-        </div>
-        <div class="mc-stats" id="mc-stats"></div>
-      </div>
-    </div>
-
-    <!-- External Services -->
-    <div class="services-card dev-only" id="services-card" style="display:none">
-      <h3>Top External Services Contacted</h3>
-      <div class="svc-pills" id="svc-pills"></div>
-    </div>
-
-    <!-- Alerts -->
-    <div class="alerts-section dev-only">
-      <div class="section-hd">
-        <h3>Findings &amp; Alerts</h3>
-        <span class="badge badge-gray" id="alert-badge">0</span>
-      </div>
-      <div id="alert-list"></div>
-    </div>
-
-    <!-- Device / Protocol / Port Tabs -->
-    <div class="tabs-section dev-only">
-      <div class="tab-bar">
-        <button class="tab-btn active" onclick="switchTab('devices')">Device Inventory</button>
-        <button class="tab-btn" onclick="switchTab('protocols')">Protocols</button>
-        <button class="tab-btn" onclick="switchTab('ports')">Port Activity</button>
-      </div>
-      <div class="tab-pane active" id="tab-devices">
-        <div class="table-card">
+  <!-- ═══════════════════════ PAGE: DEVICES ═══════════════════════ -->
+  <div class="page-section" id="page-devices">
+    <div class="detail-content">
+      <div class="section-hd"><h3>Device Inventory</h3></div>
+      <div class="tabs-section" style="margin-top:-4px">
+        <div class="table-card" style="border-radius:var(--r2)">
           <div class="device-filter-bar">
             <input type="text" id="dev-search" class="dev-search" placeholder="Search IP, name, hostname, MAC…" oninput="filterDevices()">
             <div class="filter-group">
@@ -791,11 +731,26 @@ body.user-mode .user-panel { display: block; }
           </table>
         </div>
       </div>
-      <div class="tab-pane" id="tab-protocols">
-        <div class="table-card" id="proto-rows"></div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ PAGE: NETWORK ═══════════════════════ -->
+  <div class="page-section" id="page-network">
+    <div class="detail-content">
+      <div class="section-hd"><h3>Network Traffic</h3></div>
+      <div class="charts-row" id="charts-row" style="margin-top:0">
+        <div class="chart-card">
+          <h3>Protocol Breakdown</h3>
+          <div class="chart-wrap"><canvas id="proto-chart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <h3>Protocol Detail</h3>
+          <div id="proto-rows" style="max-height:176px;overflow-y:auto"></div>
+        </div>
       </div>
-      <div class="tab-pane" id="tab-ports">
-        <div class="table-card">
+      <div class="tabs-section">
+        <div class="section-hd" style="margin-bottom:8px"><h3 style="font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--sub)">Port Activity</h3></div>
+        <div class="table-card" style="border-radius:var(--r2)">
           <table>
             <thead><tr><th>Port</th><th>Service</th><th>Connections</th><th>Status</th></tr></thead>
             <tbody id="port-tbody"></tbody>
@@ -803,12 +758,93 @@ body.user-mode .user-panel { display: block; }
         </div>
       </div>
     </div>
+  </div>
 
-    <div class="dash-footer">
-      <span>NerdsToGo Network Assessment — Native PCAP Engine + Groq AI</span>
-      <span id="footer-time"></span>
+  <!-- ═══════════════════════ PAGE: SECURITY ═══════════════════════ -->
+  <div class="page-section" id="page-security">
+    <div class="detail-content">
+      <div class="section-hd"><h3>Security Overview</h3></div>
+      <div class="charts-row" style="grid-template-columns:1fr">
+        <div class="chart-card">
+          <h3>Alert Severity Breakdown</h3>
+          <div class="chart-wrap"><canvas id="sev-chart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Priority Actions -->
+      <div class="priority-section" id="priority-section" style="display:none">
+        <h3>
+          <svg viewBox="0 0 20 20"><path d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"/></svg>
+          Priority Actions
+        </h3>
+        <div class="priority-list" id="priority-list"></div>
+      </div>
+
+      <!-- Mismatch -->
+      <div class="mismatch-card" id="mismatch-card" style="display:none">
+        <div class="mc-head">
+          <div class="mc-icon">⚠</div>
+          <div class="mc-title">
+            <h4>Active vs. Passive Cross-Reference</h4>
+            <p>Comparing the active scan with the packet capture revealed identity mismatches.</p>
+          </div>
+          <div class="mc-stats" id="mc-stats"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:8px">
+        <button class="btn btn-primary" style="width:auto;padding:9px 20px" onclick="showPage('alerts')">View All Findings &amp; Alerts →</button>
+      </div>
     </div>
-  </div><!-- /detail-content -->
+  </div>
+
+  <!-- ═══════════════════════ PAGE: ALERTS ═══════════════════════ -->
+  <div class="page-section" id="page-alerts">
+    <div class="detail-content">
+      <div class="alerts-section">
+        <div class="section-hd">
+          <h3>Findings &amp; Alerts</h3>
+          <span class="badge badge-gray" id="alert-badge">0</span>
+        </div>
+        <div id="alert-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ PAGE: REPORTS ═══════════════════════ -->
+  <div class="page-section" id="page-reports">
+    <div class="detail-content">
+      <div class="section-hd"><h3>Reports &amp; Data Sources</h3></div>
+
+      <div class="chart-card" style="margin-bottom:16px">
+        <h3>Capture Summary</h3>
+        <div id="report-sources-body" style="margin-top:6px"></div>
+      </div>
+
+      <!-- External Services -->
+      <div class="services-card" id="services-card" style="display:none">
+        <h3>Top External Services Contacted</h3>
+        <div class="svc-pills" id="svc-pills"></div>
+      </div>
+
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+        <button class="btn btn-primary" style="width:auto;padding:10px 22px" onclick="window.print()">Export Report</button>
+        <button class="btn btn-ghost" style="width:auto;padding:10px 22px;margin-top:0" onclick="resetToUpload()">Start New Assessment</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ PAGE: CUSTOMER ═══════════════════════ -->
+  <div class="page-section" id="page-customer">
+    <div class="detail-content">
+      <div id="user-panel"></div>
+    </div>
+  </div>
+
+  <div class="dash-footer" style="padding:0 28px">
+    <span>NerdsToGo Network Assessment — Native PCAP Engine + Groq AI</span>
+    <span id="footer-time"></span>
+  </div>
 
 </div><!-- /dashboard-screen -->
 </div><!-- /main -->
@@ -901,17 +937,31 @@ let _sevChart      = null;
 let _allDevices    = [];
 let _hasScanGlobal = false;
 let _devFilters    = { status:'', src:'', q:'' };
-let _reportMode    = 'developer';
+let _currentPage   = 'dashboard';
 
-// ── VIEW MODE ────────────────────────────────────────────────────────────────
-function setMode(mode) {
-  _reportMode = mode;
-  const isUser = mode === 'user';
-  document.body.className = isUser ? 'user-mode' : 'dev-mode';
-  document.getElementById('mode-user').classList.toggle('active', isUser);
-  document.getElementById('mode-dev').classList.toggle('active', !isUser);
-  document.getElementById('nav-lab-name').textContent =
-    isUser ? 'Your Network Report' : (document.getElementById('dash-lab-name').textContent);
+// ── PAGE NAVIGATION ──────────────────────────────────────────────────────────
+const _PAGE_NAMES = {
+  dashboard: 'Overview', devices: 'Devices', network: 'Network',
+  security: 'Security', alerts: 'Alerts', reports: 'Reports', customer: 'Customer View',
+};
+
+function showPage(name) {
+  if (!document.getElementById('page-' + name)) return;
+  _currentPage = name;
+  document.querySelectorAll('.page-section').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
+  document.querySelectorAll('.sb-btn').forEach(b => b.classList.toggle('active', b.dataset.page === name));
+  document.getElementById('nav-page-name').textContent = _PAGE_NAMES[name] || name;
+  window.scrollTo(0, 0);
+  // Charts render at zero-size while their page is display:none — force a
+  // resize once the page (and its canvas) becomes visible again.
+  requestAnimationFrame(() => {
+    if (name === 'network'  && _protoChart) _protoChart.resize();
+    if (name === 'security' && _sevChart)   _sevChart.resize();
+  });
+}
+
+function cardKey(e, name) {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showPage(name); }
 }
 
 // ── USER PANEL ───────────────────────────────────────────────────────────────
@@ -1084,13 +1134,16 @@ function _renderCards(data) {
   const srcBody = document.getElementById('card-sources-body');
   const pcapName = data.filename || 'capture.pcap';
   const csvName  = data.csv_filename;
-  srcBody.innerHTML = `
+  const srcHtml = `
     <div style="display:flex;flex-wrap:wrap;gap:4px">
       <span class="src-mini-chip pcap">📄 ${escHtml(pcapName)}</span>
       ${csvName ? `<span class="src-mini-chip scan">📊 ${escHtml(csvName)}</span>` : ''}
       ${hasScan ? `<span class="src-mini-chip merged">◈ ${a.scan_device_count} unified</span>` : ''}
     </div>
-    <div class="src-sub">${s.total_packets.toLocaleString()} packets · ${fmtDur(s.duration_secs)} · ${fmtBytes(s.total_bytes||0)}</div>`;
+    <div class="src-sub">${s.total_packets.toLocaleString()} packets · ${fmtDur(s.duration_secs)} · ${fmtBytes(s.total_bytes||0)} · ${s.unique_hosts} devices</div>`;
+  srcBody.innerHTML = srcHtml;
+  const reportSrcBody = document.getElementById('report-sources-body');
+  if (reportSrcBody) reportSrcBody.innerHTML = srcHtml;
 
   // Header: gateway IP + MAC
   const gwDev = a.devices.find(d => d.ip && d.ip.endsWith('.1'))
@@ -1262,8 +1315,8 @@ function renderDashboard(data) {
   // Populate dashboard cards
   _renderCards(data);
 
-  // Charts
-  renderCharts(a);
+  // Charts (non-fatal — a CDN hiccup shouldn't take down the rest of the dashboard)
+  try { renderCharts(a); } catch (e) { console.error('renderCharts failed:', e); }
 
   // Priority Actions
   const critHigh = a.alerts.filter(al => al.severity==='critical'||al.severity==='high');
@@ -1347,7 +1400,7 @@ function renderDashboard(data) {
 
   // User panel
   _renderUserPanel(a);
-  setMode('developer');
+  showPage('dashboard');
 
   // Device table
   renderDeviceTable(a.devices, hasScan);
@@ -1386,6 +1439,11 @@ function renderDashboard(data) {
 function renderCharts(a) {
   if (_protoChart) { _protoChart.destroy(); _protoChart = null; }
   if (_sevChart)   { _sevChart.destroy();   _sevChart   = null; }
+
+  if (typeof Chart === 'undefined') {
+    console.warn('Chart.js failed to load (CDN unreachable?) — skipping chart rendering.');
+    return;
+  }
 
   if (a.protocols && a.protocols.length) {
     const top = a.protocols.slice(0,6);
@@ -1530,13 +1588,6 @@ function renderDeviceRows(devices) {
   });
 }
 
-// ── TABS ─────────────────────────────────────────────────────────────────────
-function switchTab(name) {
-  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', ['devices','protocols','ports'][i]===name));
-  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-  document.getElementById('tab-'+name).classList.add('active');
-}
-
 // ── DEV: TEST FILES ───────────────────────────────────────────────────────────
 async function runTestFiles() {
   hideErr();
@@ -1565,8 +1616,7 @@ async function runTestFiles() {
 // ── RESET ─────────────────────────────────────────────────────────────────────
 function resetToUpload() {
   clearFiles();
-  document.body.className = '';
-  _reportMode = 'developer';
+  showPage('dashboard');
   document.getElementById('progress-wrap').style.display    = 'none';
   document.getElementById('analyze-btn').style.display      = 'block';
   document.getElementById('analyze-btn').disabled           = true;
@@ -1575,6 +1625,7 @@ function resetToUpload() {
   document.getElementById('topnav-dash-btns').style.display = 'none';
   document.getElementById('nav-file-info').innerHTML        = '';
   document.getElementById('nav-lab-name').textContent       = 'Network Assessment';
+  document.getElementById('nav-page-name').textContent      = 'Overview';
   document.getElementById('priority-section').style.display = 'none';
   document.getElementById('mismatch-card').style.display    = 'none';
   document.getElementById('services-card').style.display    = 'none';

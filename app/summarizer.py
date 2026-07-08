@@ -70,16 +70,16 @@ def _fallback_summary(summary: dict, alerts: list, flagged: list) -> str:
             "Everything looks healthy — all devices were recognized and no unusual activity was detected."
         )
 
-    high = [a for a in alerts if a["severity"] == "high"]
-    med = [a for a in alerts if a["severity"] == "medium"]
+    high = [a for a in alerts if a.get("severity") == "high"]
+    med = [a for a in alerts if a.get("severity") == "medium"]
 
     parts = [
         f"We analyzed your network and found {device_count} connected devices. "
         f"There {'is' if alert_count == 1 else 'are'} {alert_count} issue{'s' if alert_count != 1 else ''} that need attention."
     ]
     if high:
-        parts.append(f"The most urgent issue: {high[0]['title'].lower()}. {high[0]['detail']}")
+        parts.append(f"The most urgent issue: {high[0].get('title', '').lower()}. {high[0].get('detail', '')}")
     if med:
-        parts.append(f"We also noticed: {med[0]['title'].lower()}. {med[0]['detail']}")
+        parts.append(f"We also noticed: {med[0].get('title', '').lower()}. {med[0].get('detail', '')}")
     parts.append("Our technician can walk you through the recommended next steps.")
     return " ".join(parts)

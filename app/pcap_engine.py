@@ -48,14 +48,18 @@ _DNS_TUNNEL_WHITELIST = frozenset({
     'atl-paas.net', 'atlassian.net', 'atlassian.com',      # Atlassian (Jira, Confluence)
     'azure.com', 'azure.net', 'azurewebsites.net',         # Azure (App Insights, APIs)
     'cloudfront.net',                                     # AWS CloudFront
-    'akamaihd.net', 'akamai.net', 'edgekey.net', 'edgesuite.net',  # Akamai
+    'akamaihd.net', 'akamai.net', 'akamaiedge.net', 'akadns.net',  # Akamai
+    'edgekey.net', 'edgesuite.net',                       # Akamai
     'fastly.net', 'fastlylb.net',                        # Fastly
     'amazonaws.com', 'awsstatic.com',                    # AWS / S3
     'msecnd.net', 'windows.net', 'azureedge.net',        # Microsoft Azure CDN
     'trafficmanager.net', 'microsoftonline.com',
     'office.net', 'sharepoint.com', 'live.com', 'outlook.com',
     'apple-cloudkit.com', 'icloud.com', 'cdn-apple.com', 'mzstatic.com',
+    'aaplimg.com', 'itunes-apple.com',                   # Apple CDN / image edge
     'googleapis.com', 'googleusercontent.com', 'gstatic.com', 'googlevideo.com',
+    'google.com', 'github.com', 'githubusercontent.com', 'githubassets.com',
+    'spotify.com', 'scdn.co',                            # Spotify app + CDN
     'slack.com', 'slack-edge.com',
     'salesforce.com', 'force.com',
     'zoom.us', 'zoomgov.com',
@@ -72,6 +76,12 @@ _C2_DOMAINS = frozenset({
     'afraid.org', 'changeip.com', 'dynupdate.no-ip.com',
 })
 _TOR_MARKERS = ('.onion', 'tor2web', '.onion.to', '.onion.sh', '.onion.cab', '.onion.city')
+
+# Legitimate services that publish a PUBLIC DNS name resolving to a PRIVATE
+# LAN IP by design — this is exactly the shape of a DNS-rebinding attack but is
+# benign. Common on the small/home networks this tool targets (Plex is the
+# canonical example: *.plex.direct → the local media server's 192.168.x IP).
+_LAN_MAPPED_DOMAINS = ('plex.direct',)
 
 DNS_TYPES = {
     1: 'A', 2: 'NS', 5: 'CNAME', 6: 'SOA', 12: 'PTR', 15: 'MX',
@@ -192,22 +202,32 @@ class PcapParser:
         packets = []
         linktype = 1
         idx = 0
+        # Default to little-endian until we read the SHB byte-order magic
+        endian = '<'
         while True:
             block_hdr = f.read(8)
             if len(block_hdr) < 8:
                 break
-            block_type, block_len = struct.unpack('<II', block_hdr)
+            block_type, block_len = struct.unpack(f'{endian}II', block_hdr)
             if block_len < 12:
                 break
             body = f.read(block_len - 12)
             f.read(4)  # trailing length
 
-            if block_type == 0x00000001:  # Interface Description Block
+            if block_type == 0x0A0D0D0A:  # Section Header Block
+                # Bytes 0-3 of body are the byte-order magic
+                if len(body) >= 4:
+                    bom = struct.unpack('<I', body[:4])[0]
+                    if bom == 0x1A2B3C4D:
+                        endian = '<'
+                    elif bom == 0x4D3C2B1A:
+                        endian = '>'
+            elif block_type == 0x00000001:  # Interface Description Block
                 if len(body) >= 2:
-                    linktype = struct.unpack('<H', body[:2])[0]
+                    linktype = struct.unpack(f'{endian}H', body[:2])[0]
             elif block_type == 0x00000006:  # Enhanced Packet Block
                 if len(body) >= 20:
-                    _, ts_high, ts_low, cap_len, orig_len = struct.unpack('<IIIII', body[:20])
+                    _, ts_high, ts_low, cap_len, orig_len = struct.unpack(f'{endian}IIIII', body[:20])
                     timestamp = ((ts_high << 32) | ts_low) / 1e6
                     data = body[20:20 + cap_len]
                     packets.append({'index': idx, 'timestamp': timestamp,
@@ -216,7 +236,7 @@ class PcapParser:
                     idx += 1
             elif block_type == 0x00000003:  # Simple Packet Block
                 if len(body) >= 4:
-                    orig_len = struct.unpack('<I', body[:4])[0]
+                    orig_len = struct.unpack(f'{endian}I', body[:4])[0]
                     data = body[4:]
                     packets.append({'index': idx, 'timestamp': 0,
                                     'cap_len': len(data), 'orig_len': orig_len,
@@ -400,8 +420,10 @@ class ProtocolDissector:
     @staticmethod
     def _identify_app(src_port, dst_port, payload, transport):
         app = {'protocol': 'unknown', 'details': {}}
-        if 53 in (src_port, dst_port) and transport == 'udp' and len(payload) >= 12:
-            dns = ProtocolDissector._parse_dns(payload)
+        if 53 in (src_port, dst_port) and len(payload) >= 12:
+            # DNS runs over both UDP and TCP; TCP adds a 2-byte length prefix
+            dns_payload = payload[2:] if transport == 'tcp' and len(payload) >= 14 else payload
+            dns = ProtocolDissector._parse_dns(dns_payload)
             if dns:
                 return dns
         if payload and len(payload) > 4:
@@ -523,11 +545,24 @@ class ProtocolDissector:
     def _parse_tls(data):
         try:
             if len(data) < 6 or data[0] != 0x16: return None
-            version = struct.unpack('!H', data[1:3])[0]
+            rec_version = struct.unpack('!H', data[1:3])[0]
             hs_type = data[5]
+            # The record-layer version is legacy and misleading: RFC 8446 §5.1
+            # requires a ClientHello to send 0x0301 (TLS 1.0) for middlebox
+            # compatibility, and TLS 1.3 hides the true version in the
+            # supported_versions extension. The version we can actually trust
+            # is the ServerHello's negotiated version (handshake bytes 9-10).
+            hs_version = rec_version
+            if hs_type in (1, 2) and len(data) >= 11:
+                hs_version = struct.unpack('!H', data[9:11])[0]
+            # Only a ServerHello reflects what was negotiated. A deprecated
+            # ClientHello legacy version is not a finding — flagging it marks
+            # essentially all modern HTTPS as "TLS 1.0".
+            deprecated   = (hs_type == 2 and hs_version in DEPRECATED_TLS)
+            disp_version = hs_version if hs_type == 2 else rec_version
             result = {'protocol': 'TLS', 'details': {
-                'version': TLS_VERSIONS.get(version, f'0x{version:04x}'),
-                'version_num': version, 'deprecated': version in DEPRECATED_TLS,
+                'version': TLS_VERSIONS.get(disp_version, f'0x{disp_version:04x}'),
+                'version_num': disp_version, 'deprecated': deprecated,
                 'sni': '', 'handshake': {1: 'ClientHello', 2: 'ServerHello'}.get(hs_type, f'Type-{hs_type}'),
             }}
             # Extract SNI from ClientHello
@@ -592,7 +627,7 @@ class TrafficAnalyzer:
         # Extended threat detection trackers
         self.dhcp_server_ips  = set()              # IPs sending DHCP offers (port 67→68)
         self.smb_targets      = defaultdict(set)   # src_ip → set of internal dst_ips on 445
-        self.llmnr_senders    = set()              # IPs sending from port 5355 or 137
+        self.llmnr_responses  = defaultdict(int)   # src_ip → count of LLMNR/NBT-NS responses sent
         self.ntp_resp_bytes   = defaultdict(int)   # src_ip → total bytes of NTP responses
         self.icmp_large       = []                 # {src_ip, dst_ip, payload_len} oversized ICMP
         self.dns_rebind_hits  = []                 # {domain, resolved_ip, ttl, querier}
@@ -684,9 +719,11 @@ class TrafficAnalyzer:
             if 445 in (sp, dp) and is_private(src_ip) and is_private(dst_ip) and not dst_ip.endswith('.255'):
                 self.smb_targets[src_ip].add(dst_ip)
 
-            # LLMNR / NBT-NS poisoning: hosts responding from port 5355 or 137
+            # LLMNR / NBT-NS poisoning: count responses per source IP.
+            # A Responder attack is ONE IP answering many queries; normal hosts
+            # send very few. We track response count per IP, not unique senders.
             if tr.get('type') == 'udp' and sp in (5355, 137) and is_private(src_ip):
-                self.llmnr_senders.add(src_ip)
+                self.llmnr_responses[src_ip] += 1
 
             # NTP amplification: large volume of NTP responses from an internal host
             if tr.get('type') == 'udp' and sp == 123 and is_private(src_ip):
@@ -739,7 +776,9 @@ class TrafficAnalyzer:
                             ttl         = ans.get('ttl', 9999)
                             domain      = ans.get('name', '').lower().rstrip('.')
                             if (0 < ttl < 60 and resolved_ip and is_private(resolved_ip)
-                                    and domain and not _is_local_domain(domain)):
+                                    and domain and not _is_local_domain(domain)
+                                    and not any(domain == d or domain.endswith('.' + d)
+                                                for d in _LAN_MAPPED_DOMAINS)):
                                 self.dns_rebind_hits.append({
                                     'domain': domain, 'resolved_ip': resolved_ip,
                                     'ttl': ttl, 'querier': src_ip,
@@ -775,13 +814,20 @@ class TrafficAnalyzer:
         return (src, dst, sp, dp, proto)
 
     def _detect_port_scan(self):
-        # Track the lower port of each flow as a proxy for the destination service port.
-        # Using min() avoids counting ephemeral source ports (typically >32767), which
-        # would otherwise make any device with many TCP connections look like a scanner.
+        # Identify the service port for each flow as the port that appears in
+        # WELL_KNOWN_PORTS or is below 10000; fall back to dst_port (key[3]).
+        # This avoids counting ephemeral source ports as service ports, which
+        # would make any device with many connections look like a scanner.
         svc_ports = defaultdict(set)
         for key in self.flows:
             if len(key) == 5:
-                svc_ports[key[0]].add(min(key[2], key[3]))
+                p1, p2 = key[2], key[3]
+                if p1 in WELL_KNOWN_PORTS or (p1 < 10000 and p2 >= 10000):
+                    svc_ports[key[0]].add(p1)
+                elif p2 in WELL_KNOWN_PORTS or (p2 < 10000 and p1 >= 10000):
+                    svc_ports[key[0]].add(p2)
+                else:
+                    svc_ports[key[0]].add(p2)  # both high — use dst
         for src, ports in svc_ports.items():
             # Exclude: IPv4 routers (.1), IPv6 loopback/gateway (::1), link-local (fe80::)
             if (len(ports) > 70
@@ -799,6 +845,15 @@ class TrafficAnalyzer:
         for (src, dst), count in self.src_dst_pairs.items():
             if count < 5 or is_private(dst):
                 continue
+            # Suppress cloud/CDN/push destinations. In small-office and home
+            # networks the overwhelming majority of periodic, low-jitter
+            # traffic is legitimate: Apple/Google push keepalives, RMM agents
+            # (ConnectWise, NinjaOne, Datto, Atera), cloud backup, telemetry,
+            # and IoT phone-home — all of which live behind these ranges and
+            # beacon far more regularly than real jittered C2. A genuine C2
+            # channel to a random VPS is NOT in these ranges and still fires.
+            if any(dst.startswith(p) for p in self._CDN_PREFIXES):
+                continue
             times = [fl['start'] for key, fl in self.flows.items()
                      if len(key) == 5 and key[0] == src and key[1] == dst
                      and fl['start'] < float('inf')]
@@ -812,29 +867,55 @@ class TrafficAnalyzer:
             variance = sum((x - mean_int)**2 for x in intervals) / len(intervals)
             std_dev = math.sqrt(variance) if variance > 0 else 0
             cv = std_dev / mean_int if mean_int > 0 else float('inf')
-            if cv < 0.15 and mean_int > 5:
+            if cv < 0.35 and mean_int > 5:  # 0.35 catches jitter-obfuscated C2 beacons
                 self.anomalies.append({
-                    'severity': 'critical', 'category': 'c2_beacon',
-                    'description': f'Beaconing: {src} → {dst} every ~{mean_int:.0f}s (CV={cv:.3f}, {count} flows)',
+                    'severity': 'high', 'category': 'c2_beacon',
+                    'description': (f'Periodic beaconing to non-cloud host: {src} → {dst} '
+                                    f'every ~{mean_int:.0f}s (CV={cv:.3f}, {count} flows). '
+                                    f'Confirm this is not a legitimate agent before acting.'),
                     'source': src, 'destination': dst,
                 })
                 self.iocs.append({'type': 'c2_candidate', 'value': f'{src} -> {dst}'})
 
+    @staticmethod
+    def _shannon_entropy(s: str) -> float:
+        if not s:
+            return 0.0
+        freq = Counter(s)
+        n = len(s)
+        return -sum((c / n) * math.log2(c / n) for c in freq.values())
+
     def _detect_dns_tunneling(self):
         domain_lengths = defaultdict(list)
+        domain_entropies = defaultdict(list)
         for q in self.dns_queries:
             parts = q.get('name', '').split('.')
             if len(parts) > 2:
-                domain_lengths['.'.join(parts[-2:])].append(len('.'.join(parts[:-2])))
+                subdomain = '.'.join(parts[:-2])
+                apex = '.'.join(parts[-2:])
+                domain_lengths[apex].append(len(subdomain))
+                if subdomain:
+                    domain_entropies[apex].append(self._shannon_entropy(subdomain))
         for domain, lengths in domain_lengths.items():
             if domain in _DNS_TUNNEL_WHITELIST:
                 continue
             if len(lengths) >= 5:
-                avg = sum(lengths) / len(lengths)
-                if avg > 30 and len(lengths) > 10:
+                avg_len = sum(lengths) / len(lengths)
+                avg_ent = sum(domain_entropies[domain]) / len(domain_entropies[domain]) if domain_entropies[domain] else 0
+                # A DNS tunnel encodes data into subdomain labels, which pushes
+                # per-character entropy above ~4.0 bits/char. Human/service
+                # names (Spotify's 'spclient', Akamai CNAME chains) top out
+                # around 3.5–3.8, so entropy — not length — is the tunnel
+                # signal. Length alone is NOT sufficient: CDNs legitimately
+                # chain very long hostnames. Require high entropy, and treat
+                # length only as a corroborating factor at a higher bar.
+                high_entropy    = avg_ent > 4.0 and len(lengths) > 8
+                long_and_random = avg_len > 40 and avg_ent > 3.8 and len(lengths) > 10
+                if high_entropy or long_and_random:
+                    reason = f'avg subdomain {avg_len:.0f} chars, entropy {avg_ent:.2f} bits/char'
                     self.anomalies.append({
                         'severity': 'critical', 'category': 'dns_tunnel',
-                        'description': f'DNS tunneling suspected: {domain} — {len(lengths)} queries, avg subdomain {avg:.0f} chars',
+                        'description': f'DNS tunneling suspected: {domain} — {len(lengths)} queries, {reason}',
                     })
                     self.iocs.append({'type': 'dns_tunnel_domain', 'value': domain})
 
@@ -849,12 +930,31 @@ class TrafficAnalyzer:
                 })
                 self.iocs.append({'type': 'arp_spoof_ip', 'value': ip_addr})
 
+    # CDN/cloud prefixes that regularly carry large legitimate transfers.
+    # Rate-based exfil alerts are suppressed for these destinations.
+    _CDN_PREFIXES = (
+        '13.', '52.', '54.', '3.',     # AWS
+        '34.', '35.',                  # Google Cloud
+        '104.16.', '104.17.', '104.18.', '104.19.',  # Cloudflare
+        '23.', '151.101.',             # Fastly / Akamai
+        '17.',                         # Apple / iCloud
+        '40.', '20.', '13.107.',       # Microsoft / Azure / OneDrive
+        '162.125.',                    # Dropbox
+    )
+
     def _detect_data_exfil(self):
         for key, fl in self.flows.items():
             if len(key) != 5:
                 continue
             src, dst = key[0], key[1]
             if is_private(dst):
+                continue
+            # Suppress both volume- and rate-based alerts for known cloud/CDN
+            # destinations. For this audience a large upload is almost always a
+            # legitimate cloud backup, photo sync, OneDrive/Dropbox/iCloud, or a
+            # game/video upload — not exfiltration. A bulk transfer to a random
+            # non-cloud host still fires.
+            if any(dst.startswith(p) for p in self._CDN_PREFIXES):
                 continue
             if fl['payload_bytes'] > 50 * 1024 * 1024:
                 self.anomalies.append({
@@ -894,16 +994,35 @@ class TrafficAnalyzer:
                         'severity': 'medium', 'category': 'cleartext',
                         'description': f'HTTP POST (cleartext) to {host} from {req.get("src_ip","")}',
                     })
-        ftp = sum(1 for k in self.flows if len(k) == 5 and (k[2] in (20,21) or k[3] in (20,21)))
-        tel = sum(1 for k in self.flows if len(k) == 5 and (k[2] == 23 or k[3] == 23))
+        ftp  = sum(1 for k in self.flows if len(k) == 5 and (k[2] in (20, 21) or k[3] in (20, 21)))
+        tel  = sum(1 for k in self.flows if len(k) == 5 and (k[2] == 23 or k[3] == 23))
+        ldap = sum(1 for k in self.flows if len(k) == 5 and (k[2] == 389 or k[3] == 389))
+        imap = sum(1 for k in self.flows if len(k) == 5 and (k[2] == 143 or k[3] == 143))
+        pop3 = sum(1 for k in self.flows if len(k) == 5 and (k[2] == 110 or k[3] == 110))
+        snmp = sum(1 for k in self.flows if len(k) == 5 and (k[2] == 161 or k[3] == 161))
         if ftp:
             self.anomalies.append({'severity': 'high', 'category': 'cleartext',
                                    'description': f'FTP traffic detected ({ftp} flows) — credentials in cleartext'})
         if tel:
             self.anomalies.append({'severity': 'high', 'category': 'cleartext',
                                    'description': f'Telnet traffic detected ({tel} flows) — all data in cleartext'})
+        if ldap:
+            self.anomalies.append({'severity': 'high', 'category': 'cleartext',
+                                   'description': f'Cleartext LDAP detected ({ldap} flows) — directory queries and credentials unencrypted'})
+        if imap:
+            self.anomalies.append({'severity': 'medium', 'category': 'cleartext',
+                                   'description': f'Cleartext IMAP detected ({imap} flows) — email credentials exposed without STARTTLS'})
+        if pop3:
+            self.anomalies.append({'severity': 'medium', 'category': 'cleartext',
+                                   'description': f'Cleartext POP3 detected ({pop3} flows) — email credentials exposed without STARTTLS'})
+        if snmp:
+            self.anomalies.append({'severity': 'medium', 'category': 'cleartext',
+                                   'description': f'SNMP traffic detected ({snmp} flows) — community strings (passwords) transmitted in cleartext'})
 
     def _detect_tls_issues(self):
+        # hs['deprecated'] is set only for a ServerHello whose *negotiated*
+        # version is TLS 1.1 / 1.0 / SSL — i.e. what the two ends actually
+        # agreed to use, not the legacy handshake byte.
         seen_versions = set()
         for hs in self.tls_handshakes:
             v = hs.get('version_num', 0)
@@ -911,22 +1030,28 @@ class TrafficAnalyzer:
                 seen_versions.add(v)
                 self.anomalies.append({
                     'severity': 'medium', 'category': 'tls',
-                    'description': f'Deprecated TLS version: {hs.get("version","?")} seen from {hs.get("src_ip","")}',
+                    'description': (f'Deprecated TLS version negotiated: {hs.get("version","?")} '
+                                    f'with server {hs.get("dst_ip","")}'),
                 })
 
     def _detect_smb_lateral(self):
         """One internal host contacting many others over SMB = ransomware / worm spreading."""
+        # Threshold of 10 (was 5): in a managed small network a backup agent,
+        # RMM tool, NAS, or file server legitimately touches many hosts over
+        # SMB. A real worm fans out to nearly every reachable host, so 10 still
+        # catches aggressive spread while sparing routine 5–8 target fan-out.
         for src, targets in self.smb_targets.items():
             internal_targets = {t for t in targets if is_private(t) and t != src}
-            if len(internal_targets) >= 5:
+            if len(internal_targets) >= 10:
                 sample = ', '.join(sorted(internal_targets)[:3])
                 suffix = '…' if len(internal_targets) > 3 else ''
                 self.anomalies.append({
-                    'severity': 'critical', 'category': 'smb_lateral',
+                    'severity': 'high', 'category': 'smb_lateral',
                     'description': (
-                        f'SMB lateral movement: {src} connected to {len(internal_targets)} '
+                        f'SMB fan-out: {src} connected to {len(internal_targets)} '
                         f'internal hosts on port 445 ({sample}{suffix}). '
-                        f'Classic ransomware or worm spreading pattern.'
+                        f'This can be ransomware/worm spread — but first confirm it is not '
+                        f'your backup, RMM, or file server, which do this legitimately.'
                     ),
                     'source': src,
                 })
@@ -947,17 +1072,19 @@ class TrafficAnalyzer:
             self.iocs.append({'type': 'rogue_dhcp', 'value': ips})
 
     def _detect_llmnr_poisoning(self):
-        """Multiple hosts answering LLMNR/NBT-NS = credential-harvesting tool (Responder)."""
-        if len(self.llmnr_senders) > 8:
-            sample = ', '.join(sorted(self.llmnr_senders)[:4])
-            self.anomalies.append({
-                'severity': 'high', 'category': 'llmnr_poisoning',
-                'description': (
-                    f'LLMNR/NBT-NS poisoning suspected: {len(self.llmnr_senders)} hosts are '
-                    f'responding to name-resolution broadcasts ({sample}). '
-                    f'Consistent with Responder or Inveigh harvesting NetNTLM hashes.'
-                ),
-            })
+        """Single IP answering many LLMNR/NBT-NS queries = Responder/Inveigh credential harvesting."""
+        _THRESHOLD = 20  # a legitimate host rarely sends more than a handful of LLMNR responses
+        for src, count in self.llmnr_responses.items():
+            if count >= _THRESHOLD:
+                self.anomalies.append({
+                    'severity': 'high', 'category': 'llmnr_poisoning',
+                    'description': (
+                        f'LLMNR/NBT-NS poisoning suspected: {src} sent {count} LLMNR/NBT-NS '
+                        f'responses — far more than any legitimate host would generate. '
+                        f'Consistent with Responder or Inveigh harvesting NetNTLM hashes.'
+                    ),
+                    'source': src,
+                })
 
     def _detect_ntp_amplification(self):
         """Internal host sending large volumes of NTP responses = DDoS reflector."""
@@ -1014,8 +1141,35 @@ class TrafficAnalyzer:
                 })
                 self.iocs.append({'type': 'dns_rebind_domain', 'value': hit['domain']})
 
+    @staticmethod
+    def _is_dga(domain: str) -> bool:
+        """Heuristic DGA detector on the registered (second-level) domain label.
+
+        Real DGA domains are a single unpronounceable token that someone
+        registered (e.g. 'kq3vzjxwbf.com'). We inspect the second-level label
+        — NOT the leftmost subdomain, which for CDNs and SaaS is a long but
+        perfectly legitimate service tag (e.g. '0-prod-dynamite-…-signaler-pa'
+        under google.com). We also require BOTH high consonant density AND
+        high entropy before firing; either one alone flags too many real
+        service names. Hyphenated or digit-laced labels are human-composed
+        (e.g. 'itunes-apple', 'assets-proxy') and are excluded outright.
+        """
+        labels = domain.split('.')
+        sld = labels[-2] if len(labels) >= 2 else labels[0]
+        # Hyphens/underscores mark human-composed names, not DGA output
+        if '-' in sld or '_' in sld:
+            return False
+        # Score letters only; punctuation/digits should not inflate the ratio
+        letters = [c for c in sld if c.isalpha()]
+        if len(letters) < 12:
+            return False
+        vowels = sum(1 for c in letters if c in 'aeiou')
+        consonant_ratio = 1 - (vowels / len(letters))
+        entropy = TrafficAnalyzer._shannon_entropy(sld)
+        return consonant_ratio > 0.70 and entropy > 3.6
+
     def _detect_c2_domains(self):
-        """DNS queries to known C2 / dynamic-DNS infrastructure."""
+        """DNS queries to known C2 / dynamic-DNS infrastructure or DGA-generated domains."""
         seen: set = set()
         for hit in self.c2_domain_hits:
             key = (hit['domain'], hit['querier'])
@@ -1033,6 +1187,28 @@ class TrafficAnalyzer:
                 })
                 self.iocs.append({'type': 'c2_domain', 'value': hit['domain']})
 
+        # DGA detection: flag high-entropy or consonant-heavy SLDs
+        seen_dga: set = set()
+        for q in self.dns_queries:
+            domain = q.get('name', '').lower().rstrip('.')
+            if not domain or domain in seen_dga:
+                continue
+            apex = '.'.join(domain.split('.')[-2:]) if '.' in domain else domain
+            if apex in _DNS_TUNNEL_WHITELIST:
+                continue
+            if self._is_dga(domain):
+                seen_dga.add(domain)
+                self.anomalies.append({
+                    'severity': 'high', 'category': 'c2_domain',
+                    'description': (
+                        f'{q.get("src_ip", "?")} queried "{domain}" — domain matches DGA '
+                        f'(Domain Generation Algorithm) patterns: high consonant density or '
+                        f'entropy typical of Emotet, Mirai, or similar malware families.'
+                    ),
+                    'source': q.get('src_ip', ''),
+                })
+                self.iocs.append({'type': 'dga_domain', 'value': domain})
+
     def _compile_results(self) -> Dict:
         ts = self.timestamps
         duration = (max(ts) - min(ts)) if len(ts) > 1 else 0
@@ -1044,12 +1220,8 @@ class TrafficAnalyzer:
             if d not in seen:
                 seen.add(d); unique.append(a)
 
-        score = 0
-        for a in unique:
-            score += {'critical': 25, 'high': 15, 'medium': 8, 'low': 3}.get(a['severity'], 0)
-        score = min(score, 100)
-        risk_level = ('CRITICAL' if score >= 50 else 'HIGH' if score >= 30
-                      else 'MEDIUM' if score >= 15 else 'LOW' if score > 0 else 'CLEAN')
+        # NOTE: scoring lives in parser._score (type-weighted, dedup-by-type).
+        # The engine only surfaces raw anomalies; it does not score them.
 
         return {
             'total_packets':   self.total_packets,
@@ -1072,6 +1244,4 @@ class TrafficAnalyzer:
             'user_agents':     dict(self.user_agents.most_common(10)),
             'anomalies':       unique,
             'iocs':            self.iocs,
-            'threat_score':    score,
-            'risk_level':      risk_level,
         }

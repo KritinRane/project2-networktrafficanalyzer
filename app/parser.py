@@ -125,14 +125,53 @@ def _port_label(port: int) -> str:
     return labels.get(port, f"Port {port}")
 
 
+def _extract_dhcp_hostname(payload: bytes) -> Optional[str]:
+    """Extract DHCP option 12 (hostname) from a raw UDP DHCP payload."""
+    if len(payload) < 240:
+        return None
+    # DHCP magic cookie at offset 236 must be 0x63825363
+    if payload[236:240] != b'\x63\x82\x53\x63':
+        return None
+    i = 240
+    while i < len(payload) - 1:
+        opt = payload[i]
+        if opt == 255:  # END
+            break
+        if opt == 0:    # PAD
+            i += 1
+            continue
+        if i + 1 >= len(payload):
+            break
+        length = payload[i + 1]
+        data = payload[i + 2: i + 2 + length]
+        if opt == 12 and data:  # Hostname option
+            try:
+                return data.decode('utf-8', errors='replace').strip('\x00').strip()
+            except Exception:
+                pass
+        i += 2 + length
+    return None
+
+
 def _extract_hostnames(dissected_packets: list) -> dict:
-    """Pull device names from mDNS PTR, DHCP, and NetBIOS inside dissected packets."""
+    """Pull device names from mDNS PTR records, mDNS queries, and DHCP option 12."""
     hostname_map = {}
 
     for pkt in dissected_packets:
         ip  = pkt.get('ip')
+        tr  = pkt.get('transport')
         app = pkt.get('app')
         src_ip = ip.get('src_ip', '') if ip else ''
+
+        # ── DHCP option 12 (most reliable for non-Apple devices) ─────────────
+        if (tr and tr.get('type') == 'udp'
+                and tr.get('src_port') == 68 and tr.get('dst_port') == 67
+                and src_ip and is_private(src_ip)):
+            raw_data = pkt.get('_raw_payload', b'')
+            if raw_data:
+                dhcp_name = _extract_dhcp_hostname(raw_data)
+                if dhcp_name and len(dhcp_name) > len(hostname_map.get(src_ip, '')):
+                    hostname_map[src_ip] = dhcp_name
 
         if not app or app.get('protocol') != 'DNS':
             continue
@@ -140,6 +179,7 @@ def _extract_hostnames(dissected_packets: list) -> dict:
         if not details:
             continue
 
+        # ── mDNS PTR answers ─────────────────────────────────────────────────
         for ans in details.get('answers', []):
             name = ans.get('name', '')
             if ans.get('type') == 'PTR' and '.local' in name:
@@ -151,6 +191,7 @@ def _extract_hostnames(dissected_packets: list) -> dict:
                     if len(base) > len(hostname_map.get(src_ip, '')):
                         hostname_map[src_ip] = base
 
+        # ── mDNS queries (self-identifying) ──────────────────────────────────
         for q in details.get('queries', []):
             name = q.get('name', '')
             if '.local' in name and src_ip and is_private(src_ip):
@@ -227,7 +268,7 @@ def parse_pcap_file(pcap_path: str, scan_devices: list = None) -> dict:
 
     # Port summary
     port_counter = engine_results['port_counter']
-    SUSP = {4444, 1337, 31337, 6667, 6666, 9001, 9050, 8888, 5555}
+    SUSP = {4444, 1337, 31337, 6667, 6666, 9001, 9050, 5555}  # 8888 excluded (Jupyter/dev servers)
     port_list = [
         {'port': p, 'count': c, 'suspicious': p in SUSP, 'label': _port_label(p)}
         for p, c in sorted(port_counter.items(), key=lambda x: x[1], reverse=True)[:10]
@@ -327,8 +368,8 @@ def _build_devices(engine: dict, hostname_map: dict, analyzer: TrafficAnalyzer,
     SUSP_PORTS = {
         4444: 'Metasploit default', 1337: 'Common backdoor',
         31337: 'Back Orifice', 6667: 'IRC (C2)', 6666: 'IRC',
-        9001: 'Tor relay', 9050: 'Tor proxy', 8888: 'C2 common',
-    }
+        9001: 'Tor relay', 9050: 'Tor proxy',
+    }  # 8888 excluded — Jupyter, dev servers, and many apps use it legitimately
     device_suspicious: dict = defaultdict(list)
     for key in analyzer.flows:
         if len(key) != 5:
@@ -341,18 +382,24 @@ def _build_devices(engine: dict, hostname_map: dict, analyzer: TrafficAnalyzer,
                     device_suspicious[src_ip].append(entry)
 
     # ── Step 1: union of all IPs ──────────────────────────────────────────────
+    _NOISE_PREFIXES = ('fe80', 'ff', 'fc00', 'fd', '169.254', '::1')
+
+    def _is_noise_ip(addr: str) -> bool:
+        laddr = addr.lower()
+        return any(laddr.startswith(p) for p in _NOISE_PREFIXES) or addr == '::1'
+
     all_ips: set = set(engine['internal_ips'])
     for ip in arp_table:
-        if is_private(ip) and not ip.startswith('fe80') and not ip.startswith('169.254'):
+        if is_private(ip) and not _is_noise_ip(ip):
             all_ips.add(ip)
     for ip in scan_catalog:
-        if is_private(ip):
+        if is_private(ip) and not _is_noise_ip(ip):
             all_ips.add(ip)
 
     device_list = []
 
     for ip in all_ips:
-        if ip.startswith('fe80') or ip.startswith('169.254'):
+        if _is_noise_ip(ip):
             continue
         if ip.startswith('ff'):          # IPv6 multicast (ff02::fb, ff02::1, etc.)
             continue
@@ -480,14 +527,14 @@ def _build_alerts(anomalies: list, devices: list) -> list:
     """Map engine anomalies + per-device flags to frontend alert objects."""
     CATEGORY_MAP = {
         'port_scan':         ('high',     'port_scan',         'Possible port scan detected'),
-        'c2_beacon':         ('critical', 'c2_beacon',         'C2 beaconing pattern detected'),
+        'c2_beacon':         ('high',     'c2_beacon',         'Periodic beaconing to a non-cloud host'),
         'dns_tunnel':        ('critical', 'dns_tunnel',        'DNS tunneling suspected'),
         'arp_spoof':         ('critical', 'arp_spoof',         'ARP spoofing detected'),
         'exfiltration':      ('high',     'data_exfil',        'Potential data exfiltration'),
         'suspicious_port':   ('high',     'suspicious_port',   'Traffic on suspicious port'),
         'cleartext':         ('high',     'cleartext',         'Cleartext protocol detected'),
-        'tls':               ('medium',   'tls_issue',         'Deprecated TLS version in use'),
-        'smb_lateral':       ('critical', 'smb_lateral',       'SMB Lateral Movement Detected'),
+        'tls':               ('medium',   'tls_issue',         'Deprecated TLS version negotiated'),
+        'smb_lateral':       ('high',     'smb_lateral',       'SMB fan-out over port 445'),
         'dhcp_rogue':        ('critical', 'dhcp_rogue',        'Rogue DHCP Server Detected'),
         'llmnr_poisoning':   ('high',     'llmnr_poisoning',   'LLMNR/NBT-NS Poisoning Suspected'),
         'ntp_amplification': ('medium',   'ntp_amplification', 'NTP Amplification Reflector Detected'),
@@ -572,31 +619,37 @@ def _score(alerts: list) -> tuple:
     # Weights encode Likelihood × Impact per alert type.
     # Confirmed active threats with network-wide blast radius score highest;
     # theoretical or low-blast-radius findings score lowest.
+    # Weights are impact-scaled by CONFIDENCE. High-confidence, protocol-
+    # confirmed findings (ARP multi-MAC, rogue DHCP, exact known-C2 domain)
+    # keep their full weight. Heuristic findings that survive a false-positive
+    # gate but are not self-confirming (beaconing to a non-cloud host, SMB
+    # fan-out) are capped below the HIGH threshold so they cannot single-
+    # handedly raise the risk level — they need a second corroborating finding.
     _TYPE_WEIGHTS = {
-        # Confirmed, active, whole-network impact
+        # High confidence — protocol/signature confirmed, whole-network impact
         'arp_spoof':             30,
         'dhcp_rogue':            30,
-        'smb_lateral':           28,
-        'c2_beacon':             28,
         'dns_tunnel':            26,
         'dns_rebind':            26,
-        # Confirmed active, device/data impact
+        # High confidence — device/data impact
         'data_exfil':            22,
         'c2_domain':             20,
+        # Heuristic (FP-gated) — meaningful but should not solo-escalate
+        'c2_beacon':             18,
+        'smb_lateral':           18,
         'llmnr_poisoning':       16,
-        # Cross-reference confirmed, identity/infrastructure
-        'shadow_infrastructure': 16,
         'hostname_spoof':        14,
         'icmp_tunnel':           13,
         # Observed anomalies, require additional conditions to weaponize
         'suspicious_port':       10,
-        'ghost_device':          10,
         'port_scan':              9,
+        'shadow_infrastructure':  8,
         'cleartext':              7,
         'ntp_amplification':      7,
         'tls_issue':              4,
-        # Low likelihood or low impact
+        # Low impact / informational — do not move the risk needle
         'unknown_device':         3,
+        'ghost_device':           0,
         'mac_privacy':            0,
     }
     # Each threat TYPE is scored at most once. Finding 10 unknown devices is

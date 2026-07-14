@@ -44,7 +44,14 @@ pip install -r requirements.txt
 export GROQ_API_KEY=your_key_here
 # Windows: set GROQ_API_KEY=your_key_here
 
-# 5. Run the server
+# 5. Configure report email delivery (Gmail example)
+export SMTP_USER=your-sending-address@gmail.com
+export SMTP_PASS=your-16-character-gmail-app-password
+export SMTP_FROM_NAME="NerdsToGo"
+# In production, this must be the public address clients can open.
+export PUBLIC_BASE_URL=https://your-domain.example
+
+# 6. Run the server
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -90,6 +97,17 @@ Check if TShark and Groq are configured correctly.
 
 ### GET /health
 Basic server health check.
+
+### Emailing a client report
+
+After an assessment completes, open **Reports** and select **Email Client Report**.
+Enter the client's email (and optionally their name and company) to save the
+assessment, generate a PDF, and email the PDF with a customer-portal invite.
+
+Email is sent only when `SMTP_USER` and `SMTP_PASS` are configured. Gmail
+requires an App Password rather than the normal account password. Optional
+`SMTP_HOST`, `SMTP_PORT` (defaults to 587), and `SMTP_FROM` support other SMTP
+providers.
 
 ## Connecting the React Frontend
 

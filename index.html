@@ -116,6 +116,8 @@ body {
 .btn-primary:disabled { opacity: .35; cursor: not-allowed; }
 .btn-ghost { background: transparent; color: var(--sub); border: 1px solid var(--border2); margin-top: 8px; font-size: 13px; }
 .btn-ghost:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.btn-success { background: var(--green); color: #062b15; }
+.btn-success:hover:not(:disabled) { background: #16a34a; }
 .progress-wrap { margin-top: 20px; }
 .pg-bar-bg { height: 4px; background: rgba(255,255,255,0.08); border-radius: 99px; overflow: hidden; margin: 8px 0; }
 .pg-bar-fill { height: 100%; background: var(--blue); border-radius: 99px; transition: width .3s; }
@@ -231,6 +233,26 @@ body {
 .page-section.active { display: block; animation: pg-fade .16s ease; }
 @keyframes pg-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 .page-section > .detail-content > .section-hd h3 { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
+
+/* ── REPORT DELIVERY ── */
+.modal-backdrop { position: fixed; inset: 0; z-index: 200; display: none; align-items: center; justify-content: center; padding: 20px; background: rgba(3,7,18,.74); }
+.modal-backdrop.open { display: flex; }
+.modal { width: 100%; max-width: 470px; padding: 24px; border: 1px solid var(--border2); border-radius: var(--r2); background: var(--card); box-shadow: 0 20px 55px rgba(0,0,0,.45); }
+.modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+.modal-head h3 { font-size: 17px; color: var(--text); }
+.modal-head p { margin-top: 4px; color: var(--sub); font-size: 12px; }
+.modal-close { border: 0; background: transparent; color: var(--sub); cursor: pointer; font-size: 22px; line-height: 1; padding: 0 3px; }
+.modal-close:hover { color: var(--text); }
+.delivery-field { margin-bottom: 13px; }
+.delivery-field label { display: block; margin-bottom: 5px; color: var(--sub); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+.delivery-field input { width: 100%; padding: 9px 10px; border: 1px solid var(--border2); border-radius: var(--r); background: var(--sidebar); color: var(--text); font: inherit; }
+.delivery-field input:focus { outline: none; border-color: var(--blue); }
+.delivery-note { margin: 3px 0 16px; color: var(--sub); font-size: 12px; line-height: 1.45; }
+.delivery-status { display: none; margin: 0 0 14px; padding: 9px 11px; border: 1px solid var(--border2); border-radius: var(--r); color: var(--sub); font-size: 12px; }
+.delivery-status.success { display: block; border-color: rgba(34,197,94,.4); background: var(--green-l); color: var(--green); }
+.delivery-status.error { display: block; border-color: rgba(239,68,68,.4); background: rgba(239,68,68,.1); color: #fca5a5; }
+.delivery-actions { display: flex; gap: 9px; justify-content: flex-end; }
+.delivery-actions .btn { width: auto; padding: 9px 15px; }
 
 /* Charts */
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
@@ -486,6 +508,7 @@ body {
     <span class="tn-file-info" id="nav-file-info"></span>
     <div id="topnav-dash-btns" style="display:none;align-items:center;gap:6px;flex-wrap:wrap">
       <button class="tn-btn" onclick="resetToUpload()">← New Assessment</button>
+      <button class="tn-btn primary" onclick="openSendReportModal()">Email Client Report</button>
       <button class="tn-btn primary" onclick="window.print()">Export Report</button>
     </div>
     <button class="tn-btn" onclick="doLogout()" title="Sign out" style="border-color:rgba(239,68,68,0.35);color:#f87171;">Sign Out</button>
@@ -829,6 +852,7 @@ body {
       </div>
 
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+        <button class="btn btn-success" style="width:auto;padding:10px 22px" onclick="openSendReportModal()">Email Client Report</button>
         <button class="btn btn-primary" style="width:auto;padding:10px 22px" onclick="window.print()">Export Report</button>
         <button class="btn btn-ghost" style="width:auto;padding:10px 22px;margin-top:0" onclick="resetToUpload()">Start New Assessment</button>
       </div>
@@ -849,6 +873,37 @@ body {
 
 </div><!-- /dashboard-screen -->
 </div><!-- /main -->
+
+<!-- ── EMAIL CLIENT REPORT ── -->
+<div class="modal-backdrop" id="send-report-modal" role="dialog" aria-modal="true" aria-labelledby="send-report-title" onclick="closeSendReportFromBackdrop(event)">
+  <form class="modal" onsubmit="sendReportToClient(event)">
+    <div class="modal-head">
+      <div>
+        <h3 id="send-report-title">Email client report</h3>
+        <p>The client receives the assessment PDF and a secure portal invitation.</p>
+      </div>
+      <button type="button" class="modal-close" aria-label="Close" onclick="closeSendReportModal()">×</button>
+    </div>
+    <div class="delivery-field">
+      <label for="client-email">Client email</label>
+      <input id="client-email" type="email" required autocomplete="email" placeholder="client@company.com">
+    </div>
+    <div class="delivery-field">
+      <label for="client-name">Client name <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input id="client-name" type="text" autocomplete="name" placeholder="Jane Smith">
+    </div>
+    <div class="delivery-field">
+      <label for="client-company">Company <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+      <input id="client-company" type="text" autocomplete="organization" placeholder="Acme Co.">
+    </div>
+    <p class="delivery-note">The assessment is saved to the client's portal even if the mail provider is unavailable.</p>
+    <div id="delivery-status" class="delivery-status" role="status"></div>
+    <div class="delivery-actions">
+      <button type="button" class="btn btn-ghost" style="margin-top:0" onclick="closeSendReportModal()">Cancel</button>
+      <button type="submit" class="btn btn-success" id="send-report-btn">Send report</button>
+    </div>
+  </form>
+</div>
 
 <script>
 const API = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
@@ -929,6 +984,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (e.key === 'Enter') doLogin();
     });
   });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeSendReportModal();
+  });
 });
 
 let selectedPcap   = null;
@@ -939,6 +997,80 @@ let _allDevices    = [];
 let _hasScanGlobal = false;
 let _devFilters    = { status:'', src:'', q:'' };
 let _currentPage   = 'dashboard';
+let _currentReport = null;
+
+// ── REPORT DELIVERY ─────────────────────────────────────────────────────────
+function openSendReportModal() {
+  if (!_currentReport || !_currentReport.analysis) {
+    alert('Run an assessment before sending a client report.');
+    return;
+  }
+  const modal = document.getElementById('send-report-modal');
+  const status = document.getElementById('delivery-status');
+  const btn = document.getElementById('send-report-btn');
+  status.className = 'delivery-status';
+  status.textContent = '';
+  btn.disabled = false;
+  btn.textContent = 'Send report';
+  modal.classList.add('open');
+  setTimeout(() => document.getElementById('client-email').focus(), 0);
+}
+
+function closeSendReportModal() {
+  document.getElementById('send-report-modal').classList.remove('open');
+}
+
+function closeSendReportFromBackdrop(event) {
+  if (event.target === event.currentTarget) closeSendReportModal();
+}
+
+async function sendReportToClient(event) {
+  event.preventDefault();
+  if (!_currentReport || !_currentReport.analysis) return;
+
+  const email = document.getElementById('client-email').value.trim();
+  const name = document.getElementById('client-name').value.trim();
+  const company = document.getElementById('client-company').value.trim();
+  const btn = document.getElementById('send-report-btn');
+  const status = document.getElementById('delivery-status');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  status.className = 'delivery-status';
+  status.textContent = '';
+
+  try {
+    const res = await authFetch(API + '/api/reports/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customer_email: email,
+        customer_name: name,
+        customer_company: company,
+        filename: _currentReport.filename || 'network-assessment-report',
+        analysis: _currentReport.analysis,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || data.error || 'Could not send the report.');
+
+    if (data.emailed) {
+      status.className = 'delivery-status success';
+      status.textContent = 'Report emailed successfully to ' + data.customer_email + '.';
+      btn.textContent = 'Sent';
+      return;
+    }
+
+    status.className = 'delivery-status error';
+    status.textContent = 'Report saved for the client, but email was not sent: ' + (data.email_detail || 'mail provider unavailable.');
+    btn.disabled = false;
+    btn.textContent = 'Retry email';
+  } catch (error) {
+    status.className = 'delivery-status error';
+    status.textContent = error.message || 'Could not send the report.';
+    btn.disabled = false;
+    btn.textContent = 'Send report';
+  }
+}
 
 // ── PAGE NAVIGATION ──────────────────────────────────────────────────────────
 const _PAGE_NAMES = {
@@ -1301,6 +1433,7 @@ function renderDashboard(data) {
   const a = data.analysis;
   const s = a.summary;
   const hasScan = !!a.has_scan_data;
+  _currentReport = data;
 
   document.getElementById('upload-screen').style.display    = 'none';
   document.getElementById('dashboard-screen').style.display = 'block';
@@ -1668,6 +1801,8 @@ async function runLiveScan() {
 
 // ── RESET ─────────────────────────────────────────────────────────────────────
 function resetToUpload() {
+  _currentReport = null;
+  closeSendReportModal();
   clearFiles();
   showPage('dashboard');
   document.getElementById('progress-wrap').style.display    = 'none';

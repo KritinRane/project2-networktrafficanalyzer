@@ -5,6 +5,7 @@ __pycache__/
 .vercel
 venv/
 .venv/
+data/
 *.egg-info/
 dist/
 build/

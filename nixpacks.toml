@@ -1,0 +1,19 @@
+# Railway/Nixpacks build config.
+#
+# WeasyPrint (PDF rendering) is a native library that links against Pango,
+# Cairo and GDK-Pixbuf at RUNTIME — they are not Python packages and pip
+# cannot install them. Without these the app boots but every PDF render
+# raises OSError ("cannot load library libpango..."). We install them via
+# apt during the setup phase. fonts-liberation gives the PDF real fonts
+# instead of blocky fallbacks.
+[phases.setup]
+aptPkgs = [
+    "libpango-1.0-0",
+    "libpangocairo-1.0-0",
+    "libpangoft2-1.0-0",
+    "libgdk-pixbuf-2.0-0",
+    "libcairo2",
+    "libffi-dev",
+    "shared-mime-info",
+    "fonts-liberation",
+]

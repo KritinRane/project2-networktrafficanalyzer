@@ -541,6 +541,7 @@ body {
       </div>
       <button class="btn btn-primary" id="analyze-btn" disabled onclick="startAnalysis()">Run Assessment</button>
       <button class="btn btn-ghost" id="clear-btn" style="display:none" onclick="clearFiles()">✕ Clear files</button>
+      <button class="btn btn-ghost" id="live-btn" onclick="runLiveScan()" style="margin-top:8px">📡 Run live scan — capture traffic &amp; scan this network</button>
       <button class="btn btn-ghost" onclick="runTestFiles()" style="margin-top:8px;border-style:dashed">⚡ Dev: use test_data/ files</button>
     </div>
   </div>
@@ -1609,6 +1610,58 @@ async function runTestFiles() {
     showErr('Test run failed: ' + e.message);
     document.getElementById('progress-wrap').style.display = 'none';
     document.getElementById('analyze-btn').style.display   = 'block';
+    resetSteps();
+  }
+}
+
+// ── LIVE SCAN (auto capture + subnet scan) ──────────────────────────────────
+async function runLiveScan() {
+  hideErr();
+  document.getElementById('progress-wrap').style.display = 'block';
+  document.getElementById('analyze-btn').style.display   = 'none';
+  document.getElementById('clear-btn').style.display     = 'none';
+  document.getElementById('live-btn').style.display      = 'none';
+  resetSteps();
+  setStep(1,'active'); animateTo(8);
+
+  const DURATION = 300; // 5-minute capture
+  try {
+    const startRes = await authFetch(API + '/api/live/start?duration=' + DURATION, { method:'POST' });
+    if (!startRes.ok) { const e = await startRes.json().catch(()=>({detail:'Server error'})); throw new Error(e.detail || 'Could not start live scan'); }
+    const { job_id } = await startRes.json();
+    setStep(1,'done'); setStep(2,'active');
+
+    while (true) {
+      await sleep(3000);
+      const sRes = await authFetch(API + '/api/live/' + job_id + '/status');
+      if (!sRes.ok) throw new Error('Lost connection to the running job');
+      const j = await sRes.json();
+
+      if (j.status === 'capturing' || j.status === 'scan_ready') {
+        const rem = (j.seconds_remaining == null) ? DURATION : j.seconds_remaining;
+        const pct = 10 + Math.round(75 * Math.min(1, (DURATION - rem) / DURATION));
+        document.getElementById('pg-fill').style.width = pct + '%';
+        document.getElementById('pg-pct').textContent  = pct + '%';
+        const found = (j.scan_device_count != null) ? (j.scan_device_count + ' devices found · ') : '';
+        const mm = Math.floor(rem / 60), ss = String(rem % 60).padStart(2, '0');
+        document.getElementById('ps2').lastChild.textContent = found + 'capturing traffic — ' + mm + ':' + ss + ' left';
+        if (j.status === 'scan_ready') { setStep(2,'done'); setStep(3,'active'); }
+      } else if (j.status === 'analyzing') {
+        setStep(2,'done'); setStep(3,'done'); setStep(4,'active'); animateTo(95);
+        document.getElementById('ps4').lastChild.textContent = 'Analyzing traffic patterns';
+      } else if (j.status === 'done') {
+        animateTo(100); setStep(4,'done'); await sleep(400);
+        renderDashboard({ filename: 'Live capture (' + (j.iface || 'network') + ')', csv_filename: 'Angry IP scan', analysis: j.analysis });
+        return;
+      } else if (j.status === 'error') {
+        throw new Error(j.error || j.scan_error || 'Live scan failed');
+      }
+    }
+  } catch(e) {
+    showErr('Live scan failed: ' + e.message);
+    document.getElementById('progress-wrap').style.display = 'none';
+    document.getElementById('analyze-btn').style.display   = 'block';
+    document.getElementById('live-btn').style.display      = 'block';
     resetSteps();
   }
 }

@@ -19,7 +19,7 @@ router = APIRouter()
 
 _ALLOWED_PCAP = {".pcap", ".pcapng", ".cap"}
 _ALLOWED_CSV  = {".csv", ".txt", ".tsv"}
-_MAX_MB       = 100
+_MAX_MB       = 500
 
 
 @router.post("/analyze")

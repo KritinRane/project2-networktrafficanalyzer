@@ -122,7 +122,7 @@ def _device_rows(devices: List[dict], limit: int = 30) -> str:
             f'<tr>'
             f'<td class="mono">{_esc(d.get("ip"))}</td>'
             f'<td>{_esc(d.get("hostname") or d.get("mac") or "—")}</td>'
-            f'<td>{_esc(d.get("vendor") or "—")}</td>'
+            f'<td>{_esc(d.get("manufacturer") or d.get("scan_mac_vendor") or "—")}</td>'
             f'<td>{flag}</td>'
             f'</tr>'
         )

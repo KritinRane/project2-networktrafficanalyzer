@@ -83,3 +83,7 @@ def send_report_email(
         return True, "sent"
     except Exception as e:  # auth failure, network, etc.
         return False, f"email send failed: {e}"
+        
+
+
+

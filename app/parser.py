@@ -207,7 +207,8 @@ def _extract_hostnames(dissected_packets: list) -> dict:
 
 # ── Main entry point ──────────────────────────────────────────────────────────
 
-def parse_pcap_file(pcap_path: str, scan_devices: list = None) -> dict:
+def parse_pcap_file(pcap_path: str, scan_devices: list = None,
+                     known_scanner_ip: str = None) -> dict:
     """
     Parse a pcap/pcapng file and return the full analysis dict.
 
@@ -247,7 +248,7 @@ def parse_pcap_file(pcap_path: str, scan_devices: list = None) -> dict:
     dissected   = [ProtocolDissector.dissect(p) for p in raw_packets]
 
     hostname_map   = _extract_hostnames(dissected)
-    analyzer       = TrafficAnalyzer()
+    analyzer       = TrafficAnalyzer(known_scanner_ip=known_scanner_ip)
     engine_results = analyzer.process(dissected)
 
     # ── Phase 3: build unified device list ───────────────────────────────────

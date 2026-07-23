@@ -41,10 +41,11 @@ _SCAN_TIMEOUT = 180
 JOBS: dict = {}
 
 
-def _finalize(pcap_path: str, scan_devices: list) -> dict:
+def _finalize(pcap_path: str, scan_devices: list, known_scanner_ip: str = None) -> dict:
     """Run the shared analysis pipeline (mirrors /api/analyze)."""
     has_scan = bool(scan_devices)
-    analysis = parse_pcap_file(pcap_path, scan_devices if has_scan else None)
+    analysis = parse_pcap_file(pcap_path, scan_devices if has_scan else None,
+                                known_scanner_ip=known_scanner_ip)
 
     if has_scan:
         mismatch = (
@@ -106,7 +107,11 @@ async def _run_live(job_id: str, iface: str, duration: int):
 
     job['status'] = 'analyzing'
     try:
-        job['analysis'] = await asyncio.to_thread(_finalize, pcap, scan_devices)
+        # We ran the Angry IP scan from THIS machine — its own scan traffic
+        # (SMB/NetBIOS probes, wide port checks) would otherwise look like
+        # an attacker to smb_lateral/port_scan. Exclude it by IP.
+        known_scanner_ip = await asyncio.to_thread(scanner.local_ip, iface)
+        job['analysis'] = await asyncio.to_thread(_finalize, pcap, scan_devices, known_scanner_ip)
         job['status'] = 'done'
     except Exception as e:
         job.update(status='error', error=f'analysis failed: {e}')

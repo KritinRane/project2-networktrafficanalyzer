@@ -597,7 +597,15 @@ class ProtocolDissector:
 class TrafficAnalyzer:
     """Analyzes dissected packets for flows, statistics, and anomalies."""
 
-    def __init__(self):
+    def __init__(self, known_scanner_ip: str = None):
+        # IP of the machine running our OWN diagnostic scan (e.g. Angry IP,
+        # launched by the live-capture job on this same host). Its scan
+        # traffic is authorized and legitimate, but looks identical on the
+        # wire to a port scan or SMB fan-out — so it's excluded from those
+        # two detectors specifically, rather than tuning the thresholds
+        # (which would just as easily hide a real attacker doing the same
+        # thing from a different device).
+        self.known_scanner_ip = known_scanner_ip
         self.flows = defaultdict(lambda: {
             'packets': 0, 'bytes': 0, 'payload_bytes': 0,
             'start': float('inf'), 'end': 0,
@@ -703,6 +711,14 @@ class TrafficAnalyzer:
 
             key = self._flow_key(ip, tr)
             fl = self.flows[key]
+            if 'client_ip' not in fl:
+                # Record the true initiator from this (first-seen) packet's real
+                # src/dst — the flow key itself is canonicalized (smaller of the
+                # two (ip, port) tuples first) purely for bidirectional dedup, so
+                # it does NOT reliably indicate who initiated the connection.
+                fl['client_ip']   = src_ip
+                fl['server_ip']   = dst_ip
+                fl['server_port'] = dp
             fl['packets'] += 1
             fl['bytes'] += cap_len
             fl['payload_bytes'] += tr.get('payload_len', 0)
@@ -814,26 +830,24 @@ class TrafficAnalyzer:
         return (src, dst, sp, dp, proto)
 
     def _detect_port_scan(self):
-        # Identify the service port for each flow as the port that appears in
-        # WELL_KNOWN_PORTS or is below 10000; fall back to dst_port (key[3]).
-        # This avoids counting ephemeral source ports as service ports, which
-        # would make any device with many connections look like a scanner.
+        # Bucket by the TRUE initiator of each flow (recorded from the first
+        # packet's actual src/dst in _process_packet), not by the canonicalized
+        # flow-key tuple — that key only sorts (ip, port) pairs for bidirectional
+        # dedup and does not indicate who initiated the connection. Using it here
+        # previously misattributed scans to busy servers (e.g. a NAS contacted by
+        # many clients on many different ports) instead of the actual client.
         svc_ports = defaultdict(set)
-        for key in self.flows:
-            if len(key) == 5:
-                p1, p2 = key[2], key[3]
-                if p1 in WELL_KNOWN_PORTS or (p1 < 10000 and p2 >= 10000):
-                    svc_ports[key[0]].add(p1)
-                elif p2 in WELL_KNOWN_PORTS or (p2 < 10000 and p1 >= 10000):
-                    svc_ports[key[0]].add(p2)
-                else:
-                    svc_ports[key[0]].add(p2)  # both high — use dst
+        for key, fl in self.flows.items():
+            if len(key) == 5 and 'client_ip' in fl:
+                svc_ports[fl['client_ip']].add(fl['server_port'])
         for src, ports in svc_ports.items():
-            # Exclude: IPv4 routers (.1), IPv6 loopback/gateway (::1), link-local (fe80::)
+            # Exclude: IPv4 routers (.1), IPv6 loopback/gateway (::1), link-local
+            # (fe80::), and our own known diagnostic-scan host (see __init__).
             if (len(ports) > 70
                     and not src.endswith('.1')
                     and not src.endswith('::1')
-                    and not src.startswith('fe80')):
+                    and not src.startswith('fe80')
+                    and src != self.known_scanner_ip):
                 self.anomalies.append({
                     'severity': 'high', 'category': 'port_scan',
                     'description': f'Possible port scan from {src} — {len(ports)} unique service ports contacted',
@@ -1041,6 +1055,8 @@ class TrafficAnalyzer:
         # SMB. A real worm fans out to nearly every reachable host, so 10 still
         # catches aggressive spread while sparing routine 5–8 target fan-out.
         for src, targets in self.smb_targets.items():
+            if src == self.known_scanner_ip:
+                continue
             internal_targets = {t for t in targets if is_private(t) and t != src}
             if len(internal_targets) >= 10:
                 sample = ', '.join(sorted(internal_targets)[:3])

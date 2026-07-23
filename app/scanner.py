@@ -66,6 +66,12 @@ def _iface_ipv4(iface: str) -> Optional[Tuple[str, int]]:
     return m.group(1), int(m.group(2), 16)
 
 
+def local_ip(iface: str) -> Optional[str]:
+    """Return this machine's own IPv4 address on the given interface, if any."""
+    info = _iface_ipv4(iface)
+    return info[0] if info else None
+
+
 def local_range(iface: str) -> Tuple[str, str]:
     """Compute the (first_host, last_host) IPv4 range for an interface's subnet."""
     info = _iface_ipv4(iface)

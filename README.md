@@ -49,23 +49,53 @@ workflow.
 
 ## Setup
 
+### Step 1 — Get the code
+
+**Option A — Download ZIP (no Git required, easiest on Windows)**
+
+1. Go to https://github.com/KritinRane/project2-networktrafficanalyzer
+2. Click the green **`< > Code`** button → **Download ZIP**
+3. Extract the ZIP (right-click → **Extract All**)
+4. Open **Command Prompt** or **PowerShell** in the extracted folder, then
+   continue from **Step 2** below (the `python -m venv` step).
+
+**Option B — Clone with Git** (requires Git installed — https://git-scm.com/download/win)
+
 ```bash
-# 1. Get the code
 git clone https://github.com/KritinRane/project2-networktrafficanalyzer.git
 cd project2-networktrafficanalyzer
+```
 
-# 2. Create and activate a virtual environment
+### Step 2 — Create and activate a virtual environment
+
+**Windows (Command Prompt / PowerShell):**
+```bat
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+**macOS / Linux:**
+```bash
 python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate
+```
 
-# 3. Install Python dependencies
+### Step 3 — Install Python dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
-# 4. Create your .env from the template and fill it in
-cp .env.example .env
-# then open .env and set at least GROQ_API_KEY (see "Configuration" below)
+### Step 4 — Create your .env from the template
 
-# 5. Run the server
+**Windows:**  `copy .env.example .env`
+**macOS / Linux:**  `cp .env.example .env`
+
+Then open `.env` and set at least `GROQ_API_KEY` (see "Configuration" below).
+
+### Step 5 — Run the server
+
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
 

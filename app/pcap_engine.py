@@ -642,8 +642,50 @@ class TrafficAnalyzer:
         self.c2_domain_hits   = []                 # {domain, querier, indicator, type}
 
     def process(self, dissected_packets: List[Dict]) -> Dict:
+        self.ingest(dissected_packets)
+        return self.run_detectors()
+
+    def ingest(self, dissected_packets: List[Dict]) -> None:
+        """Consume packets and populate flow/state tables. Runs no detectors,
+        so `known_scanner_ip` can still be set (e.g. via infer_scan_host) after
+        ingestion but before detection."""
         for pkt in dissected_packets:
             self._process_packet(pkt)
+
+    def infer_scan_host(self, scan_catalog: dict) -> str:
+        """Best-effort identify the IP that ran our OWN subnet scan (Angry IP).
+
+        The scan host is the one internal device that initiates flows to a
+        large majority of the devices the scan itself catalogued — it "sees"
+        the whole subnet, which is exactly the port_scan / smb_lateral
+        signature. Identifying it lets the upload path exclude that authorized
+        scan traffic the same way a live-capture run passes known_scanner_ip.
+
+        Only fires when scan data is present, and returns at most the single
+        best-matching host — a real attacker on a different IP still trips the
+        detectors. Returns None when no host clearly swept the subnet.
+        """
+        if not scan_catalog:
+            return None
+        fanout = defaultdict(set)   # client_ip -> distinct internal hosts contacted
+        for key, fl in self.flows.items():
+            if len(key) == 5 and 'client_ip' in fl:
+                c, s = fl['client_ip'], fl.get('server_ip', '')
+                if c and s and is_private(c) and is_private(s) and c != s:
+                    fanout[c].add(s)
+        if not fanout:
+            return None
+        top_ip = max(fanout, key=lambda k: len(fanout[k]))
+        reach  = len(fanout[top_ip])
+        # Require the top talker to have reached a large majority of the
+        # scanned subnet (and a meaningful absolute floor) before trusting it
+        # as our scanner — a busy NAS or file server touches many hosts but
+        # rarely half of everything the scan enumerated.
+        if reach >= max(10, 0.5 * len(scan_catalog)):
+            return top_ip
+        return None
+
+    def run_detectors(self) -> Dict:
         self._detect_port_scan()
         self._detect_beaconing()
         self._detect_dns_tunneling()
@@ -984,8 +1026,14 @@ class TrafficAnalyzer:
 
     def _detect_suspicious_ports(self):
         seen = set()
-        for key in self.flows:
+        for key, fl in self.flows.items():
             if len(key) != 5:
+                continue
+            # Our own diagnostic scan probes odd/high ports across the subnet;
+            # a hit on 4444/1337/etc from the scanner is authorized recon, not a
+            # backdoor. Skip flows the scan host initiated. A real device
+            # touching these ports still fires.
+            if self.known_scanner_ip and fl.get('client_ip') == self.known_scanner_ip:
                 continue
             for port in (key[2], key[3]):
                 if port in SUSPICIOUS_PORTS and port not in seen:

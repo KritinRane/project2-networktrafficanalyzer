@@ -249,7 +249,19 @@ def parse_pcap_file(pcap_path: str, scan_devices: list = None,
 
     hostname_map   = _extract_hostnames(dissected)
     analyzer       = TrafficAnalyzer(known_scanner_ip=known_scanner_ip)
-    engine_results = analyzer.process(dissected)
+    analyzer.ingest(dissected)
+
+    # When scan data is present but no scanner IP was supplied (the upload
+    # path — the live-capture path already knows its own scan host), infer the
+    # device that ran the Angry IP scan and exclude its authorized sweep from
+    # port_scan / smb_lateral. Prevents our own diagnostic scan from inflating
+    # the risk score. An explicit known_scanner_ip always wins.
+    if known_scanner_ip is None and scan_catalog:
+        inferred = analyzer.infer_scan_host(scan_catalog)
+        if inferred:
+            analyzer.known_scanner_ip = inferred
+
+    engine_results = analyzer.run_detectors()
 
     # ── Phase 3: build unified device list ───────────────────────────────────
     devices = _build_devices(engine_results, hostname_map, analyzer, scan_catalog)

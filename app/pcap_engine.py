@@ -883,13 +883,25 @@ class TrafficAnalyzer:
             if len(key) == 5 and 'client_ip' in fl:
                 svc_ports[fl['client_ip']].add(fl['server_port'])
         for src, ports in svc_ports.items():
-            # Exclude: IPv4 routers (.1), IPv6 loopback/gateway (::1), link-local
-            # (fe80::), and our own known diagnostic-scan host (see __init__).
+            # Exclude infrastructure that legitimately touches many ports:
+            # IPv4 routers (.1), IPv6 loopback/gateway (::1), link-local (fe80::).
             if (len(ports) > 70
                     and not src.endswith('.1')
                     and not src.endswith('::1')
-                    and not src.startswith('fe80')
-                    and src != self.known_scanner_ip):
+                    and not src.startswith('fe80')):
+                # Our own diagnostic scanner (Angry IP) produces exactly this
+                # signature. Rather than hide it — which leaves the user
+                # wondering — surface it as a clearly-labeled informational note
+                # so it reads as "this was your own scan," not an attacker.
+                if src == self.known_scanner_ip:
+                    self.anomalies.append({
+                        'severity': 'info', 'category': 'diagnostic_scan',
+                        'description': (f'Network scan from {src} — this is this tool\'s own '
+                                        f'diagnostic scan (Angry IP) sweeping the subnet '
+                                        f'({len(ports)} ports contacted), not an outside threat.'),
+                        'source': src,
+                    })
+                    continue
                 self.anomalies.append({
                     'severity': 'high', 'category': 'port_scan',
                     'description': f'Possible port scan from {src} — {len(ports)} unique service ports contacted',
@@ -1103,12 +1115,24 @@ class TrafficAnalyzer:
         # SMB. A real worm fans out to nearly every reachable host, so 10 still
         # catches aggressive spread while sparing routine 5–8 target fan-out.
         for src, targets in self.smb_targets.items():
-            if src == self.known_scanner_ip:
-                continue
             internal_targets = {t for t in targets if is_private(t) and t != src}
             if len(internal_targets) >= 10:
                 sample = ', '.join(sorted(internal_targets)[:3])
                 suffix = '…' if len(internal_targets) > 3 else ''
+                # Our own diagnostic scanner also fans out over SMB. Label it
+                # rather than drop it, so the report is transparent about what
+                # the traffic was.
+                if src == self.known_scanner_ip:
+                    self.anomalies.append({
+                        'severity': 'info', 'category': 'diagnostic_scan',
+                        'description': (
+                            f'SMB activity from {src} to {len(internal_targets)} internal hosts '
+                            f'({sample}{suffix}) — part of this tool\'s own diagnostic scan, '
+                            f'not ransomware or worm spread.'
+                        ),
+                        'source': src,
+                    })
+                    continue
                 self.anomalies.append({
                     'severity': 'high', 'category': 'smb_lateral',
                     'description': (

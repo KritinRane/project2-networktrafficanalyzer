@@ -26,8 +26,9 @@ server hands out at `/` — there is no separate frontend to build or deploy.
   summary a non-technical client can read.
 - **Email a PDF report** — save the assessment, render it to PDF, and email it to
   the client with a portal invite so they can view their own reports.
-- **Live capture** *(optional, macOS-first)* — run a capture and scan directly
-  from the machine instead of uploading files.
+- **Live capture + scan** *(optional; macOS and Windows)* — run a packet capture
+  and an Angry IP subnet scan directly from the machine instead of uploading
+  files.
 
 ---
 
@@ -141,15 +142,26 @@ automatically at startup). Copy `.env.example` to `.env` and fill it in.
 Email is only attempted when `SMTP_USER` and `SMTP_PASS` are set. Everything
 else in the app works without them.
 
-### Live capture (optional, macOS-first)
+### Live capture + scan (optional; macOS and Windows)
 
 Only needed if you want to capture/scan from the machine instead of uploading
-files.
+files. Both the packet capture and the active subnet scan work on macOS and
+Windows. Requirements:
+
+- **Wireshark** installed (provides `dumpcap`). On **Windows**, also install
+  **Npcap** — it's bundled in the Wireshark installer; leave it checked.
+- **Angry IP Scanner** installed (https://angryip.org).
+- An **interactive desktop session** — the scanner briefly opens a window, so
+  this won't work over a plain SSH session or as a background service.
+- On **Windows**, run the server **as Administrator** (Npcap capture needs it).
+
+The tool auto-detects your capture interface and scans your local `/24` subnet.
+If the binaries aren't found automatically, point these variables at them:
 
 | Variable | What it's for |
 |---|---|
-| `DUMPCAP` | Path to Wireshark's `dumpcap` binary (if not on `PATH`). Requires Wireshark installed. |
-| `IPSCAN_APP` | Path to `Angry IP Scanner.app` (if not in a standard Applications folder). |
+| `DUMPCAP` | Full path to the `dumpcap` binary if it's not on `PATH`. Windows: `C:\Program Files\Wireshark\dumpcap.exe`. |
+| `IPSCAN_APP` | Path to Angry IP Scanner. macOS: the `.app` bundle. Windows: the `ipscan.exe` file (e.g. `C:\Program Files\Angry IP Scanner\ipscan.exe`). |
 
 ---
 
@@ -249,5 +261,11 @@ nerdstogoanalyzer/
   make sure you're using an App Password.
 - **Portal invite links point at `localhost`** — set `PUBLIC_BASE_URL` to your
   real public domain.
-- **Live capture fails** — the machine needs Wireshark (`dumpcap`) and, for
-  scanning, Angry IP Scanner; on macOS the app must run in a GUI session.
+- **Live capture says "install Wireshark" / "dumpcap failed"** — Wireshark
+  isn't installed, or the app can't find `dumpcap`. Install Wireshark (on
+  Windows, keep **Npcap** checked in the installer). If it's installed but still
+  not found, set `DUMPCAP` in `.env` to the full path of the binary and restart
+  the server. On Windows, also run the server **as Administrator**.
+- **Live scan produces no devices** — Angry IP Scanner isn't installed or
+  found (set `IPSCAN_APP`), or the backend isn't running in an interactive
+  desktop session (the scanner needs a display, so SSH/service runs won't work).

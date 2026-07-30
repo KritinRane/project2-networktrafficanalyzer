@@ -51,6 +51,12 @@ workflow.
 
 ```bash
 # 1. Get the code
+# Option 1: download the ZIP from GitHub, unzip it, then cd into the
+#           extracted folder (the folder name may include a branch suffix,
+#           e.g. project2-networktrafficanalyzer-main)
+cd project2-networktrafficanalyzer
+
+# Option 2: clone with git
 git clone https://github.com/KritinRane/project2-networktrafficanalyzer.git
 cd project2-networktrafficanalyzer
 

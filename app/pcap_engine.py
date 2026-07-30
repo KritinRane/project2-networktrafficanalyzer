@@ -198,10 +198,25 @@ class PcapParser:
         return {'format': 'pcap', 'linktype': linktype, 'packets': packets}
 
     @staticmethod
+    def _ts_divisor(tsresol: int) -> float:
+        """Seconds-per-tick from a pcapng if_tsresol byte.
+
+        High bit set → 2^-(n) seconds per tick; otherwise 10^-(n). Default when
+        the option is absent is 6 (microseconds)."""
+        if tsresol & 0x80:
+            return float(1 << (tsresol & 0x7F))
+        return float(10 ** tsresol)
+
+    @staticmethod
     def _parse_pcapng(f):
         packets = []
         linktype = 1
         idx = 0
+        # Per-interface link type and timestamp resolution, indexed by the
+        # interface id carried in each Enhanced Packet Block. A pcapng may
+        # declare several interfaces with different resolutions.
+        iface_linktypes = []
+        iface_divisors  = []
         # Default to little-endian until we read the SHB byte-order magic
         endian = '<'
         while True:
@@ -225,14 +240,34 @@ class PcapParser:
             elif block_type == 0x00000001:  # Interface Description Block
                 if len(body) >= 2:
                     linktype = struct.unpack(f'{endian}H', body[:2])[0]
+                # Walk the options (start at byte 8, after LinkType/Reserved/
+                # SnapLen) for if_tsresol (code 9); Wireshark on Windows writes
+                # nanosecond captures, so assuming microseconds inflated every
+                # duration/interval by 1000×.
+                tsresol = 6  # microseconds — the spec default when absent
+                off = 8
+                while off + 4 <= len(body):
+                    opt_code, opt_len = struct.unpack(f'{endian}HH', body[off:off + 4])
+                    off += 4
+                    if opt_code == 0:  # opt_endofopt
+                        break
+                    if opt_code == 9 and opt_len >= 1:  # if_tsresol
+                        tsresol = body[off]
+                    off += opt_len
+                    if off % 4:        # options are padded to 32-bit boundaries
+                        off += 4 - (off % 4)
+                iface_linktypes.append(linktype)
+                iface_divisors.append(PcapParser._ts_divisor(tsresol))
             elif block_type == 0x00000006:  # Enhanced Packet Block
                 if len(body) >= 20:
-                    _, ts_high, ts_low, cap_len, orig_len = struct.unpack(f'{endian}IIIII', body[:20])
-                    timestamp = ((ts_high << 32) | ts_low) / 1e6
+                    iface_id, ts_high, ts_low, cap_len, orig_len = struct.unpack(f'{endian}IIIII', body[:20])
+                    div = iface_divisors[iface_id] if iface_id < len(iface_divisors) else 1e6
+                    lt  = iface_linktypes[iface_id] if iface_id < len(iface_linktypes) else linktype
+                    timestamp = ((ts_high << 32) | ts_low) / div
                     data = body[20:20 + cap_len]
                     packets.append({'index': idx, 'timestamp': timestamp,
                                     'cap_len': cap_len, 'orig_len': orig_len,
-                                    'data': data, 'linktype': linktype})
+                                    'data': data, 'linktype': lt})
                     idx += 1
             elif block_type == 0x00000003:  # Simple Packet Block
                 if len(body) >= 4:
@@ -883,13 +918,25 @@ class TrafficAnalyzer:
             if len(key) == 5 and 'client_ip' in fl:
                 svc_ports[fl['client_ip']].add(fl['server_port'])
         for src, ports in svc_ports.items():
-            # Exclude: IPv4 routers (.1), IPv6 loopback/gateway (::1), link-local
-            # (fe80::), and our own known diagnostic-scan host (see __init__).
+            # Exclude infrastructure that legitimately touches many ports:
+            # IPv4 routers (.1), IPv6 loopback/gateway (::1), link-local (fe80::).
             if (len(ports) > 70
                     and not src.endswith('.1')
                     and not src.endswith('::1')
-                    and not src.startswith('fe80')
-                    and src != self.known_scanner_ip):
+                    and not src.startswith('fe80')):
+                # Our own diagnostic scanner (Angry IP) produces exactly this
+                # signature. Rather than hide it — which leaves the user
+                # wondering — surface it as a clearly-labeled informational note
+                # so it reads as "this was your own scan," not an attacker.
+                if src == self.known_scanner_ip:
+                    self.anomalies.append({
+                        'severity': 'info', 'category': 'diagnostic_scan',
+                        'description': (f'Network scan from {src} — this is this tool\'s own '
+                                        f'diagnostic scan (Angry IP) sweeping the subnet '
+                                        f'({len(ports)} ports contacted), not an outside threat.'),
+                        'source': src,
+                    })
+                    continue
                 self.anomalies.append({
                     'severity': 'high', 'category': 'port_scan',
                     'description': f'Possible port scan from {src} — {len(ports)} unique service ports contacted',
@@ -977,7 +1024,14 @@ class TrafficAnalyzer:
 
     def _detect_arp_spoofing(self):
         for ip_addr, macs in self.arp_table.items():
-            clean = {m for m in macs if m != '00:00:00:00:00:00'}
+            # 0.0.0.0 is the sender IP in ARP probes (RFC 5227 duplicate-address
+            # detection, used by every DHCP client on boot/renew), so many MACs
+            # claiming it is normal, not spoofing. Same for the unspecified /
+            # broadcast pseudo-addresses. Skip them to avoid a false "critical".
+            if ip_addr in ('0.0.0.0', '', '255.255.255.255'):
+                continue
+            clean = {m for m in macs
+                     if m not in ('00:00:00:00:00:00', 'ff:ff:ff:ff:ff:ff')}
             if len(clean) > 1:
                 self.anomalies.append({
                     'severity': 'critical', 'category': 'arp_spoof',
@@ -1103,12 +1157,24 @@ class TrafficAnalyzer:
         # SMB. A real worm fans out to nearly every reachable host, so 10 still
         # catches aggressive spread while sparing routine 5–8 target fan-out.
         for src, targets in self.smb_targets.items():
-            if src == self.known_scanner_ip:
-                continue
             internal_targets = {t for t in targets if is_private(t) and t != src}
             if len(internal_targets) >= 10:
                 sample = ', '.join(sorted(internal_targets)[:3])
                 suffix = '…' if len(internal_targets) > 3 else ''
+                # Our own diagnostic scanner also fans out over SMB. Label it
+                # rather than drop it, so the report is transparent about what
+                # the traffic was.
+                if src == self.known_scanner_ip:
+                    self.anomalies.append({
+                        'severity': 'info', 'category': 'diagnostic_scan',
+                        'description': (
+                            f'SMB activity from {src} to {len(internal_targets)} internal hosts '
+                            f'({sample}{suffix}) — part of this tool\'s own diagnostic scan, '
+                            f'not ransomware or worm spread.'
+                        ),
+                        'source': src,
+                    })
+                    continue
                 self.anomalies.append({
                     'severity': 'high', 'category': 'smb_lateral',
                     'description': (

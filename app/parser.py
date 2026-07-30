@@ -554,10 +554,12 @@ def _build_alerts(anomalies: list, devices: list) -> list:
         'icmp_tunnel':       ('high',     'icmp_tunnel',       'ICMP Tunneling Suspected'),
         'dns_rebind':        ('critical', 'dns_rebind',        'DNS Rebinding Attack Detected'),
         'c2_domain':         ('high',     'c2_domain',         'Known C2 Domain Contacted'),
+        'diagnostic_scan':   ('info',     'diagnostic_scan',   'Your own diagnostic scan (not a threat)'),
     }
 
     ACTIONS = {
         'port_scan':         'Identify which device ran the scan and check for malware or unauthorized software.',
+        'diagnostic_scan':   'No action needed — this is the scan this tool ran to map your network.',
         'c2_beacon':         'Immediately isolate the source device and run a full malware scan.',
         'dns_tunnel':        'Block the flagged domain at the router and scan devices for exfiltration malware.',
         'arp_spoof':         'Disconnect suspected devices immediately — someone may be intercepting traffic.',
@@ -664,6 +666,7 @@ def _score(alerts: list) -> tuple:
         'unknown_device':         3,
         'ghost_device':           0,
         'mac_privacy':            0,
+        'diagnostic_scan':        0,   # our own network scan — never a threat
     }
     # Each threat TYPE is scored at most once. Finding 10 unknown devices is
     # not 10× more dangerous than finding 1 — it's still the same threat category.

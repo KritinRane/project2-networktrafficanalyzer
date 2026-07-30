@@ -243,6 +243,64 @@ body {
 .modal-head p { margin-top: 4px; color: var(--sub); font-size: 12px; }
 .modal-close { border: 0; background: transparent; color: var(--sub); cursor: pointer; font-size: 22px; line-height: 1; padding: 0 3px; }
 .modal-close:hover { color: var(--text); }
+
+/* Help widget + risk-score explainer */
+.help-btn { flex:0 0 auto; width:20px; height:20px; border-radius:50%; border:1px solid var(--border2); background:var(--card2); color:var(--sub); font-size:12px; font-weight:700; line-height:1; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; padding:0; transition:background .15s, color .15s, border-color .15s; }
+.help-btn:hover { background:var(--blue-l); color:var(--blue); border-color:var(--blue); }
+.help-btn:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+.rh-modal { max-width:560px; max-height:85vh; overflow-y:auto; }
+.rh-lead { color:var(--sub); font-size:13px; line-height:1.6; margin:0 0 4px; }
+.rh-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--sub); margin:20px 0 8px; }
+.rh-level { display:flex; align-items:flex-start; gap:11px; padding:9px 0; border-bottom:1px solid var(--border); }
+.rh-level:last-child { border-bottom:0; }
+.rh-dot { flex:0 0 auto; width:10px; height:10px; border-radius:50%; margin-top:5px; }
+.rh-level-top { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.rh-level-name { font-weight:700; font-size:13px; color:var(--text); }
+.rh-level-range { font-size:11px; color:var(--muted); font-weight:600; font-variant-numeric:tabular-nums; }
+.rh-level-desc { font-size:12px; color:var(--sub); line-height:1.5; margin-top:2px; }
+.rh-note { font-size:12px; color:var(--sub); line-height:1.6; background:var(--card2); border:1px solid var(--border); border-radius:var(--r2); padding:12px 14px; margin-top:4px; }
+.rh-note + .rh-note { margin-top:8px; }
+.rh-note b { color:var(--text); }
+.rh-group { border:1px solid var(--border); border-radius:var(--r2); margin-top:8px; overflow:hidden; background:var(--card2); }
+.rh-group > summary { cursor:pointer; padding:11px 14px; font-size:12.5px; font-weight:700; color:var(--text); display:flex; align-items:center; gap:9px; list-style:none; user-select:none; }
+.rh-group > summary::-webkit-details-marker { display:none; }
+.rh-group > summary::after { content:'▸'; margin-left:auto; color:var(--muted); font-size:11px; transition:transform .15s; }
+.rh-group[open] > summary::after { transform:rotate(90deg); }
+.rh-group[open] > summary { border-bottom:1px solid var(--border); }
+.rh-group-body { padding:2px 14px 6px; }
+.rh-threat { padding:9px 0; border-bottom:1px solid var(--border); }
+.rh-threat:last-child { border-bottom:0; }
+.rh-threat-name { font-weight:700; font-size:12.5px; color:var(--text); }
+.rh-threat-desc { font-size:12px; color:var(--sub); line-height:1.5; margin-top:2px; }
+
+/* Live-scan duration picker */
+.live-dur { margin-top:14px; text-align:left; }
+.live-dur-label { display:block; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; color:var(--sub); margin-bottom:7px; }
+.live-dur-opts { display:flex; gap:6px; }
+.live-dur-opt { flex:1; padding:9px 6px; font-size:12px; font-weight:600; color:var(--sub); background:var(--card2); border:1px solid var(--border); border-radius:10px; cursor:pointer; transition:color .15s, background .15s, border-color .15s; }
+.live-dur-opt:hover { color:var(--text); border-color:var(--border2); }
+.live-dur-opt.active { color:var(--blue); background:var(--blue-l); border-color:var(--blue); }
+.live-dur-opt:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+.live-dur-hint { font-size:11px; color:var(--muted); margin-top:7px; line-height:1.45; }
+
+/* "Understand this issue" — per-alert explainer */
+.ac-explain { margin-top:10px; background:transparent; border:1px solid var(--border2); color:var(--blue); font-size:11.5px; font-weight:600; padding:5px 11px; border-radius:8px; cursor:pointer; transition:background .15s, border-color .15s; }
+.ac-explain:hover { background:var(--blue-l); border-color:var(--blue); }
+.ac-explain:focus-visible { outline:2px solid var(--blue); outline-offset:2px; }
+.ex-detail { font-size:12.5px; color:var(--sub); line-height:1.55; background:var(--card2); border:1px solid var(--border); border-radius:var(--r2); padding:11px 13px; }
+.ex-device { display:flex; gap:12px; align-items:flex-start; background:var(--card2); border:1px solid var(--border); border-radius:var(--r2); padding:12px 14px; margin-top:8px; }
+.ex-device.ext { border-style:dashed; }
+.ex-dev-icon { flex:0 0 auto; width:34px; height:34px; border-radius:9px; background:var(--blue-l); display:flex; align-items:center; justify-content:center; font-size:17px; }
+.ex-dev-main { min-width:0; flex:1; }
+.ex-dev-name { font-size:13.5px; font-weight:700; color:var(--text); }
+.ex-dev-ip { font-family:var(--mono,ui-monospace,monospace); font-size:11.5px; color:var(--sub); }
+.ex-dev-meta { font-size:11.5px; color:var(--muted); margin-top:4px; line-height:1.5; }
+.ex-dev-meta b { color:var(--sub); font-weight:600; }
+.ex-tag { display:inline-block; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; padding:2px 7px; border-radius:999px; margin-left:6px; }
+.ex-tag.ext { background:var(--orange-l); color:var(--orange); }
+.ex-tag.int { background:var(--green-l); color:var(--green); }
+.ex-what { font-size:12.5px; color:var(--sub); line-height:1.6; }
+.ex-do { font-size:12.5px; color:var(--text); line-height:1.6; background:var(--blue-l); border:1px solid var(--blue); border-radius:var(--r2); padding:11px 13px; }
 .delivery-field { margin-bottom: 13px; }
 .delivery-field label { display: block; margin-bottom: 5px; color: var(--sub); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
 .delivery-field input { width: 100%; padding: 9px 10px; border: 1px solid var(--border2); border-radius: var(--r); background: var(--sidebar); color: var(--text); font: inherit; }
@@ -564,6 +622,15 @@ body {
       </div>
       <button class="btn btn-primary" id="analyze-btn" disabled onclick="startAnalysis()">Run Assessment</button>
       <button class="btn btn-ghost" id="clear-btn" style="display:none" onclick="clearFiles()">✕ Clear files</button>
+      <div class="live-dur" id="live-duration" role="group" aria-label="Live scan capture length">
+        <span class="live-dur-label">Live scan — capture length</span>
+        <div class="live-dur-opts">
+          <button type="button" class="live-dur-opt" data-dur="60" onclick="setLiveDuration(60,this)">Quick · 1 min</button>
+          <button type="button" class="live-dur-opt active" data-dur="180" onclick="setLiveDuration(180,this)">Standard · 3 min</button>
+          <button type="button" class="live-dur-opt" data-dur="300" onclick="setLiveDuration(300,this)">Thorough · 5 min</button>
+        </div>
+        <div class="live-dur-hint" id="live-dur-hint">Balanced — catches most threats, including slower beaconing patterns.</div>
+      </div>
       <button class="btn btn-ghost" id="live-btn" onclick="runLiveScan()" style="margin-top:8px">📡 Run live scan — capture traffic &amp; scan this network</button>
       <button class="btn btn-ghost" onclick="runTestFiles()" style="margin-top:8px;border-style:dashed">⚡ Dev: use test_data/ files</button>
     </div>
@@ -595,7 +662,12 @@ body {
     <div class="dash-card" role="button" tabindex="0" onclick="showPage('security')" onkeydown="cardKey(event,'security')" title="View security details">
       <div class="dc-head">
         <span class="dc-title">Network Risk Status</span>
-        <span class="dc-arrow">›</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          <button type="button" class="help-btn" aria-label="What does the risk score mean?" title="What does the risk score mean?"
+                  onclick="event.stopPropagation(); openRiskHelp()"
+                  onkeydown="event.stopPropagation()">?</button>
+          <span class="dc-arrow">›</span>
+        </span>
       </div>
       <div class="card-status-sub" id="card-status-sub">— devices</div>
       <div class="card-status-text" id="card-status-text" style="color:var(--sub)">—</div>
@@ -905,6 +977,113 @@ body {
   </form>
 </div>
 
+<div class="modal-backdrop" id="explain-modal" role="dialog" aria-modal="true" aria-labelledby="explain-title" onclick="closeExplainFromBackdrop(event)">
+  <div class="modal rh-modal" id="explain-body"><!-- populated by explainAlert() --></div>
+</div>
+
+<div class="modal-backdrop" id="risk-help-modal" role="dialog" aria-modal="true" aria-labelledby="risk-help-title" onclick="closeRiskHelpFromBackdrop(event)">
+  <div class="modal rh-modal">
+    <div class="modal-head">
+      <div>
+        <h3 id="risk-help-title">Understanding your risk score</h3>
+        <p>A quick, plain-English guide to what the number means.</p>
+      </div>
+      <button type="button" class="modal-close" aria-label="Close" onclick="closeRiskHelp()">×</button>
+    </div>
+
+    <p class="rh-lead">The <b style="color:var(--text)">risk score</b> is a single number from <b style="color:var(--text)">0 to 100</b> that sums up how healthy and secure your network looks. The higher the number, the more attention it needs. We keep it deliberately calm — it only climbs when we're confident, or when several signs point the same way.</p>
+
+    <div class="rh-section-title">What the levels mean</div>
+
+    <div class="rh-level">
+      <span class="rh-dot" style="background:var(--green)"></span>
+      <div>
+        <div class="rh-level-top"><span class="rh-level-name">All Clear</span><span class="rh-level-range">score 0</span></div>
+        <div class="rh-level-desc">Nothing concerning was found. Your network looks clean.</div>
+      </div>
+    </div>
+    <div class="rh-level">
+      <span class="rh-dot" style="background:var(--blue)"></span>
+      <div>
+        <div class="rh-level-top"><span class="rh-level-name">Low Risk</span><span class="rh-level-range">score 1–11</span></div>
+        <div class="rh-level-desc">Only minor or informational items — worth a quick glance, nothing urgent.</div>
+      </div>
+    </div>
+    <div class="rh-level">
+      <span class="rh-dot" style="background:var(--orange)"></span>
+      <div>
+        <div class="rh-level-top"><span class="rh-level-name">Moderate</span><span class="rh-level-range">score 12–29</span></div>
+        <div class="rh-level-desc">Something real turned up, or several small things did. Take a look when you can.</div>
+      </div>
+    </div>
+    <div class="rh-level">
+      <span class="rh-dot" style="background:var(--pink)"></span>
+      <div>
+        <div class="rh-level-top"><span class="rh-level-name">High Risk</span><span class="rh-level-range">score 30–54</span></div>
+        <div class="rh-level-desc">A confirmed problem that affects the whole network, or several warning signs together. Act soon.</div>
+      </div>
+    </div>
+    <div class="rh-level">
+      <span class="rh-dot" style="background:var(--purple)"></span>
+      <div>
+        <div class="rh-level-top"><span class="rh-level-name">Critical</span><span class="rh-level-range">score 55+</span></div>
+        <div class="rh-level-desc">A serious, active threat — very likely more than one. This needs attention right away.</div>
+      </div>
+    </div>
+
+    <div class="rh-section-title">How the score is built</div>
+    <div class="rh-note">Each issue we find adds points based on <b>how serious</b> it is and <b>how sure</b> we are it's real. A confirmed, network-wide problem adds the most; a helpful "for your information" note adds nothing. The same kind of issue is only counted <b>once</b> — finding ten unknown devices isn't ten separate problems, it's one thing to check.</div>
+
+    <div class="rh-section-title">What each threat means</div>
+    <p class="rh-lead" style="margin-bottom:2px">Findings are grouped by how much they affect your score. Tap a group to see the specific threats and what they mean in everyday terms.</p>
+
+    <details class="rh-group">
+      <summary><span class="rh-dot" style="background:var(--purple)"></span>Confirmed threats — hard proof, highest impact</summary>
+      <div class="rh-group-body">
+        <div class="rh-threat"><div class="rh-threat-name">ARP spoofing</div><div class="rh-threat-desc">A device is pretending to be another one (often your router) so it can secretly read or reroute your traffic.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Rogue DHCP server</div><div class="rh-threat-desc">An unexpected device is handing out network addresses — a common trick to quietly route everyone's traffic through an attacker.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">DNS tunneling</div><div class="rh-threat-desc">Data is being smuggled out disguised as ordinary website lookups — a sneaky way to steal information.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">DNS rebinding</div><div class="rh-threat-desc">A website is being tricked into reaching devices inside your network — like cameras, routers, or storage — that it should never touch.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Data exfiltration</div><div class="rh-threat-desc">An unusually large amount of data is being uploaded to an unfamiliar destination — possible data theft.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Known malicious domain</div><div class="rh-threat-desc">A device contacted an address known to be used by malware to take orders. That device may be infected.</div></div>
+      </div>
+    </details>
+
+    <details class="rh-group">
+      <summary><span class="rh-dot" style="background:var(--orange)"></span>Warning signs — likely trouble, double-checked first</summary>
+      <div class="rh-group-body">
+        <div class="rh-threat"><div class="rh-threat-name">Beaconing ("phoning home")</div><div class="rh-threat-desc">A device quietly checks in with an outside server on a regular timer — the way malware calls back to its operator.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Spreading across devices (SMB)</div><div class="rh-threat-desc">One device is reaching out to many others over file-sharing — how ransomware and worms spread. (Could also be a backup or IT tool, so we flag it to confirm.)</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Password-harvesting (LLMNR)</div><div class="rh-threat-desc">A device is answering a flood of name-lookup requests to trick other computers into leaking their passwords.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Hostname mismatch</div><div class="rh-threat-desc">A device is reporting two different names in two places — a sign of impersonation, or simply a recently reconfigured device.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">ICMP tunneling</div><div class="rh-threat-desc">Data is being hidden inside "ping" traffic to slip it past normal checks.</div></div>
+      </div>
+    </details>
+
+    <details class="rh-group">
+      <summary><span class="rh-dot" style="background:var(--blue)"></span>Observations — worth noting, lower weight</summary>
+      <div class="rh-group-body">
+        <div class="rh-threat"><div class="rh-threat-name">Suspicious ports</div><div class="rh-threat-desc">Traffic was seen on ports commonly used by hacking tools or backdoors.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Port scan</div><div class="rh-threat-desc">A device probed many different ports — often reconnaissance, mapping out what's on the network.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Unseen active device</div><div class="rh-threat-desc">A device is busy on the network but didn't answer our scan — worth confirming it's supposed to be there.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Unencrypted traffic</div><div class="rh-threat-desc">Logins or data are being sent in the clear (FTP, Telnet, and similar), so passwords could be read in transit.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">NTP amplification</div><div class="rh-threat-desc">A device is sending large volumes of time-service replies — it may be caught up in a denial-of-service attack on someone else.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Outdated encryption</div><div class="rh-threat-desc">A connection used an old, weaker form of encryption (outdated TLS/SSL).</div></div>
+      </div>
+    </details>
+
+    <details class="rh-group">
+      <summary><span class="rh-dot" style="background:var(--muted)"></span>For your information — harmless, no score impact</summary>
+      <div class="rh-group-body">
+        <div class="rh-threat"><div class="rh-threat-name">Unknown device</div><div class="rh-threat-desc">A device we couldn't identify. Worth a quick check that it belongs on the network.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Privacy address (MAC privacy)</div><div class="rh-threat-desc">A device — usually a phone or laptop — is using a randomized address for privacy. Completely normal.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Ghost device</div><div class="rh-threat-desc">A device answered our scan but was otherwise silent during the capture. Normal — the capture point often can't see its private traffic.</div></div>
+        <div class="rh-threat"><div class="rh-threat-name">Your own diagnostic scan</div><div class="rh-threat-desc">When this tool scans your network, its own sweep can look like a "port scan." We recognize it and label it as your diagnostic — it doesn't count against your score.</div></div>
+      </div>
+    </details>
+  </div>
+</div>
+
 <script>
 const API = window.location.hostname === 'localhost' ? 'http://localhost:8000' : '';
 
@@ -985,7 +1164,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closeSendReportModal();
+    if (e.key === 'Escape') { closeSendReportModal(); closeRiskHelp(); closeExplain(); }
   });
 });
 
@@ -998,6 +1177,7 @@ let _hasScanGlobal = false;
 let _devFilters    = { status:'', src:'', q:'' };
 let _currentPage   = 'dashboard';
 let _currentReport = null;
+let _alerts        = [];
 
 // ── REPORT DELIVERY ─────────────────────────────────────────────────────────
 function openSendReportModal() {
@@ -1022,6 +1202,147 @@ function closeSendReportModal() {
 
 function closeSendReportFromBackdrop(event) {
   if (event.target === event.currentTarget) closeSendReportModal();
+}
+
+// ── RISK SCORE HELP ─────────────────────────────────────────────────────────
+function openRiskHelp() {
+  document.getElementById('risk-help-modal').classList.add('open');
+}
+function closeRiskHelp() {
+  document.getElementById('risk-help-modal').classList.remove('open');
+}
+function closeRiskHelpFromBackdrop(event) {
+  if (event.target === event.currentTarget) closeRiskHelp();
+}
+
+// ── UNDERSTAND THIS ISSUE ────────────────────────────────────────────────────
+// Plain-English "what this is / why it matters" per alert type.
+const _ALERT_EXPLAIN = {
+  data_exfil:      'A device sent an unusually large amount of data OUT to an address on the internet. That can mean information is being copied off your network — or it can be a normal big upload (a cloud backup, a video, a photo sync). The point is to confirm which.',
+  port_scan:       'A device knocked on a large number of “doors” (ports) across the network — the classic sign of something mapping out what’s here to find a way in. If it’s your own scanning tool, it’s harmless; otherwise it’s worth a closer look.',
+  diagnostic_scan: 'This is this tool’s own network scan (Angry IP) sweeping the subnet. It looks like a port scan on the wire, but it’s your diagnostic — not a threat.',
+  arp_spoof:       'Two devices are claiming the same network identity, which lets one secretly read or reroute the other’s traffic. This is a hands-on attack and should be run down quickly.',
+  dhcp_rogue:      'An unexpected device is handing out network addresses. That’s a common way to quietly route everyone’s traffic through an attacker.',
+  dns_tunnel:      'Data appears to be hidden inside ordinary-looking website lookups — a sneaky way to move information in or out past normal defenses.',
+  dns_rebind:      'An outside website is being pointed at devices INSIDE your network (cameras, routers, storage) that it should never be able to reach.',
+  c2_domain:       'A device contacted an address known to be used by malware to receive commands. That device may be infected.',
+  c2_beacon:       'A device is quietly checking in with an outside server on a steady timer — the way malware “phones home.” Confirm it isn’t a legitimate agent first.',
+  smb_lateral:     'One device is reaching out to many others over file-sharing — how ransomware and worms spread. It could also be a backup or IT tool, so confirm what it is.',
+  llmnr_poisoning: 'A device is answering a flood of name-lookup requests to trick other computers into leaking their passwords.',
+  icmp_tunnel:     'Data appears to be hidden inside “ping” traffic to slip past normal checks.',
+  suspicious_port: 'Traffic was seen on a port commonly used by hacking tools or backdoors.',
+  cleartext:       'Logins or data are being sent unencrypted, so passwords could be read in transit. (Some LAN device-discovery services also use this and are harmless.)',
+  ntp_amplification:'A device is sending large volumes of time-service replies — it may be caught up in a denial-of-service attack against someone else.',
+  tls_issue:       'A connection used an outdated, weaker form of encryption.',
+  hostname_spoof:  'A device reported two different names in two places — possible impersonation, or simply a recently reconfigured device.',
+  shadow_infrastructure:'A device is active on the network but didn’t answer the scan — worth confirming it’s supposed to be here.',
+  ghost_device:    'A device answered the scan but was otherwise silent in the capture. Usually normal — the capture point often can’t see its private traffic.',
+  unknown_device:  'A device we couldn’t match to a known make or name. Worth confirming it belongs on your network before anything else.',
+  mac_privacy:     'A device (usually a phone or laptop) is using a randomized address for privacy. Harmless.',
+};
+
+function _isPrivateIp(ip) {
+  if (!ip) return false;
+  if (ip.indexOf(':') >= 0) {  // IPv6
+    const l = ip.toLowerCase();
+    return l.startsWith('fe80') || l.startsWith('fc') || l.startsWith('fd') || l === '::1';
+  }
+  const p = ip.split('.').map(Number);
+  if (p.length !== 4) return false;
+  if (p[0] === 10 || p[0] === 127) return true;
+  if (p[0] === 192 && p[1] === 168) return true;
+  if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
+  if (p[0] === 169 && p[1] === 254) return true;
+  return false;
+}
+
+function _deviceIcon(d) {
+  const n = ((d && (d.device_name || d.manufacturer)) || '').toLowerCase();
+  if (/apple|iphone|ipad|mac/.test(n)) return '🍎';
+  if (/windows|microsoft/.test(n))     return '🖥️';
+  if (/android|samsung|pixel/.test(n)) return '📱';
+  if (/router|gateway|ubiquiti|netgear|tp-link|cisco/.test(n)) return '📶';
+  if (/printer|hp|epson|canon/.test(n)) return '🖨️';
+  return '💻';
+}
+
+// Render the device (or external host) block for one IP.
+function _explainHost(ip, roleLabel) {
+  const d = _allDevices.find(x => x.ip === ip);
+  const priv = _isPrivateIp(ip);
+  if (d) {
+    const name = escHtml(d.device_name || d.manufacturer || 'Unrecognized device');
+    const meta = [];
+    if (d.hostname)                        meta.push(`<b>Hostname:</b> ${escHtml(d.hostname)}`);
+    if (d.manufacturer && d.manufacturer !== 'Unknown') meta.push(`<b>Vendor:</b> ${escHtml(d.manufacturer)}`);
+    if (d.mac)                             meta.push(`<b>MAC:</b> ${escHtml(d.mac)}`);
+    const up = fmtBytes(d.bytes_sent||0), down = fmtBytes(d.bytes_recv||0);
+    meta.push(`<b>Traffic:</b> ↑ ${up} · ↓ ${down}`);
+    return `<div class="ex-device">
+      <div class="ex-dev-icon">${_deviceIcon(d)}</div>
+      <div class="ex-dev-main">
+        <div class="ex-dev-name">${name}<span class="ex-tag int">On your network</span></div>
+        <div class="ex-dev-ip">${roleLabel} · ${escHtml(ip)}</div>
+        <div class="ex-dev-meta">${meta.join(' &nbsp;·&nbsp; ')}</div>
+      </div></div>`;
+  }
+  // Not in the inventory — external internet address, or an IP with no device record.
+  return `<div class="ex-device ext">
+    <div class="ex-dev-icon">${priv ? '❔' : '🌐'}</div>
+    <div class="ex-dev-main">
+      <div class="ex-dev-name">${priv ? 'Unidentified local device' : 'External internet address'}<span class="ex-tag ${priv?'int':'ext'}">${priv?'On your network':'Outside your network'}</span></div>
+      <div class="ex-dev-ip">${roleLabel} · ${escHtml(ip)}</div>
+      <div class="ex-dev-meta">${priv ? 'Seen in traffic but not identified by name.' : 'A server on the public internet — not one of your devices.'}</div>
+    </div></div>`;
+}
+
+function explainAlert(i) {
+  const al = _alerts[i];
+  if (!al) return;
+
+  // Pull every IP out of the alert (source field + any in the detail text),
+  // in order, de-duplicated. First is the device involved; a second is the
+  // "other end" (e.g. the exfil destination).
+  const found = [];
+  const push = ip => { if (ip && !found.includes(ip)) found.push(ip); };
+  push(al.ip);
+  const ipRe = /((?:\d{1,3}\.){3}\d{1,3}|[0-9a-fA-F:]{2,}:[0-9a-fA-F:]+)/g;
+  (al.detail || '').replace(ipRe, m => { push(m); return m; });
+
+  let hostsHtml = '';
+  if (found.length) {
+    const roles = found.length >= 2 ? ['The device involved', 'The other end'] : ['The device involved'];
+    hostsHtml = found.slice(0, 2).map((ip, idx) => _explainHost(ip, roles[idx] || 'Also involved')).join('');
+  } else {
+    hostsHtml = '<div class="ex-detail">No specific device address is attached to this finding.</div>';
+  }
+
+  const what = _ALERT_EXPLAIN[al.type] || 'This finding was raised by the traffic analysis. See the details above.';
+
+  document.getElementById('explain-body').innerHTML = `
+    <div class="modal-head">
+      <div>
+        <h3 id="explain-title">Understanding this issue</h3>
+        <p>${escHtml(al.title)}</p>
+      </div>
+      <button type="button" class="modal-close" aria-label="Close" onclick="closeExplain()">×</button>
+    </div>
+    <div class="rh-section-title">What we saw</div>
+    <div class="ex-detail">${escHtml(al.detail)}</div>
+    <div class="rh-section-title">${found.length >= 2 ? 'Who’s involved' : 'The device involved'}</div>
+    ${hostsHtml}
+    <div class="rh-section-title">What this means</div>
+    <div class="ex-what">${escHtml(what)}</div>
+    ${al.action ? `<div class="rh-section-title">What to do</div><div class="ex-do">${escHtml(al.action)}</div>` : ''}`;
+
+  document.getElementById('explain-modal').classList.add('open');
+}
+
+function closeExplain() {
+  document.getElementById('explain-modal').classList.remove('open');
+}
+function closeExplainFromBackdrop(event) {
+  if (event.target === event.currentTarget) closeExplain();
 }
 
 async function sendReportToClient(event) {
@@ -1499,6 +1820,7 @@ function renderDashboard(data) {
   // Alerts
   const alList = document.getElementById('alert-list');
   alList.innerHTML = '';
+  _alerts = a.alerts;
   document.getElementById('alert-badge').textContent = a.alerts.length;
   if (a.alerts.length === 0) {
     alList.innerHTML = '<div class="no-alerts">✓ No issues detected — network looks healthy</div>';
@@ -1526,6 +1848,7 @@ function renderDashboard(data) {
               </div>
               <div class="ac-detail">${escHtml(al.detail)}</div>
               ${al.action ? `<div class="ac-action">→ ${escHtml(al.action)}</div>` : ''}
+              <button type="button" class="ac-explain" onclick="explainAlert(${a.alerts.indexOf(al)})">Understand this issue →</button>
             </div>
           </div>`).join('')}
       </div>`;
@@ -1748,16 +2071,30 @@ async function runTestFiles() {
 }
 
 // ── LIVE SCAN (auto capture + subnet scan) ──────────────────────────────────
+let _liveDuration = 180; // seconds; matches the "Standard" option selected by default
+const _liveDurHints = {
+  60:  'Fast look — catches obvious, confirmed threats. May miss slow patterns like beaconing.',
+  180: 'Balanced — catches most threats, including slower beaconing patterns.',
+  300: 'Most complete — best for timing-based threats and quiet, low-traffic devices.',
+};
+function setLiveDuration(sec, el) {
+  _liveDuration = sec;
+  document.querySelectorAll('#live-duration .live-dur-opt').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('live-dur-hint').textContent = _liveDurHints[sec] || '';
+}
+
 async function runLiveScan() {
   hideErr();
   document.getElementById('progress-wrap').style.display = 'block';
   document.getElementById('analyze-btn').style.display   = 'none';
   document.getElementById('clear-btn').style.display     = 'none';
   document.getElementById('live-btn').style.display      = 'none';
+  document.getElementById('live-duration').style.display = 'none';
   resetSteps();
   setStep(1,'active'); animateTo(8);
 
-  const DURATION = 300; // 5-minute capture
+  const DURATION = _liveDuration; // chosen via the capture-length picker
   try {
     const startRes = await authFetch(API + '/api/live/start?duration=' + DURATION, { method:'POST' });
     if (!startRes.ok) { const e = await startRes.json().catch(()=>({detail:'Server error'})); throw new Error(e.detail || 'Could not start live scan'); }
@@ -1795,6 +2132,7 @@ async function runLiveScan() {
     document.getElementById('progress-wrap').style.display = 'none';
     document.getElementById('analyze-btn').style.display   = 'block';
     document.getElementById('live-btn').style.display      = 'block';
+    document.getElementById('live-duration').style.display = '';
     resetSteps();
   }
 }
@@ -1808,6 +2146,8 @@ function resetToUpload() {
   document.getElementById('progress-wrap').style.display    = 'none';
   document.getElementById('analyze-btn').style.display      = 'block';
   document.getElementById('analyze-btn').disabled           = true;
+  document.getElementById('live-btn').style.display         = 'block';
+  document.getElementById('live-duration').style.display    = '';
   document.getElementById('dashboard-screen').style.display = 'none';
   document.getElementById('upload-screen').style.display    = 'flex';
   document.getElementById('topnav-dash-btns').style.display = 'none';

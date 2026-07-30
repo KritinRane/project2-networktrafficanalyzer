@@ -26,8 +26,9 @@ server hands out at `/` — there is no separate frontend to build or deploy.
   summary a non-technical client can read.
 - **Email a PDF report** — save the assessment, render it to PDF, and email it to
   the client with a portal invite so they can view their own reports.
-- **Live capture** *(optional, macOS-first)* — run a capture and scan directly
-  from the machine instead of uploading files.
+- **Live capture + scan** *(optional; macOS and Windows)* — run a packet capture
+  and an Angry IP subnet scan directly from the machine instead of uploading
+  files.
 
 ---
 
@@ -49,29 +50,53 @@ workflow.
 
 ## Setup
 
-```bash
-# 1. Get the code
-# Option 1: download the ZIP from GitHub, unzip it, then cd into the
-#           extracted folder (the folder name may include a branch suffix,
-#           e.g. project2-networktrafficanalyzer-main)
-cd project2-networktrafficanalyzer
+### Step 1 — Get the code
 
-# Option 2: clone with git
+**Option A — Download ZIP (no Git required, easiest on Windows)**
+
+1. Go to https://github.com/KritinRane/project2-networktrafficanalyzer
+2. Click the green **`< > Code`** button → **Download ZIP**
+3. Extract the ZIP (right-click → **Extract All**)
+4. Open **Command Prompt** or **PowerShell** in the extracted folder, then
+   continue from **Step 2** below (the `python -m venv` step).
+
+**Option B — Clone with Git** (requires Git installed — https://git-scm.com/download/win)
+
+```bash
 git clone https://github.com/KritinRane/project2-networktrafficanalyzer.git
 cd project2-networktrafficanalyzer
+```
 
-# 2. Create and activate a virtual environment
+### Step 2 — Create and activate a virtual environment
+
+**Windows (Command Prompt / PowerShell):**
+```bat
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+**macOS / Linux:**
+```bash
 python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate
+```
 
-# 3. Install Python dependencies
+### Step 3 — Install Python dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
-# 4. Create your .env from the template and fill it in
-cp .env.example .env
-# then open .env and set at least GROQ_API_KEY (see "Configuration" below)
+### Step 4 — Create your .env from the template
 
-# 5. Run the server
+**Windows:**  `copy .env.example .env`
+**macOS / Linux:**  `cp .env.example .env`
+
+Then open `.env` and set at least `GROQ_API_KEY` (see "Configuration" below).
+
+### Step 5 — Run the server
+
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -117,15 +142,26 @@ automatically at startup). Copy `.env.example` to `.env` and fill it in.
 Email is only attempted when `SMTP_USER` and `SMTP_PASS` are set. Everything
 else in the app works without them.
 
-### Live capture (optional, macOS-first)
+### Live capture + scan (optional; macOS and Windows)
 
 Only needed if you want to capture/scan from the machine instead of uploading
-files.
+files. Both the packet capture and the active subnet scan work on macOS and
+Windows. Requirements:
+
+- **Wireshark** installed (provides `dumpcap`). On **Windows**, also install
+  **Npcap** — it's bundled in the Wireshark installer; leave it checked.
+- **Angry IP Scanner** installed (https://angryip.org).
+- An **interactive desktop session** — the scanner briefly opens a window, so
+  this won't work over a plain SSH session or as a background service.
+- On **Windows**, run the server **as Administrator** (Npcap capture needs it).
+
+The tool auto-detects your capture interface and scans your local `/24` subnet.
+If the binaries aren't found automatically, point these variables at them:
 
 | Variable | What it's for |
 |---|---|
-| `DUMPCAP` | Path to Wireshark's `dumpcap` binary (if not on `PATH`). Requires Wireshark installed. |
-| `IPSCAN_APP` | Path to `Angry IP Scanner.app` (if not in a standard Applications folder). |
+| `DUMPCAP` | Full path to the `dumpcap` binary if it's not on `PATH`. Windows: `C:\Program Files\Wireshark\dumpcap.exe`. |
+| `IPSCAN_APP` | Path to Angry IP Scanner. macOS: the `.app` bundle. Windows: the `ipscan.exe` file (e.g. `C:\Program Files\Angry IP Scanner\ipscan.exe`). |
 
 ---
 
@@ -225,5 +261,11 @@ nerdstogoanalyzer/
   make sure you're using an App Password.
 - **Portal invite links point at `localhost`** — set `PUBLIC_BASE_URL` to your
   real public domain.
-- **Live capture fails** — the machine needs Wireshark (`dumpcap`) and, for
-  scanning, Angry IP Scanner; on macOS the app must run in a GUI session.
+- **Live capture says "install Wireshark" / "dumpcap failed"** — Wireshark
+  isn't installed, or the app can't find `dumpcap`. Install Wireshark (on
+  Windows, keep **Npcap** checked in the installer). If it's installed but still
+  not found, set `DUMPCAP` in `.env` to the full path of the binary and restart
+  the server. On Windows, also run the server **as Administrator**.
+- **Live scan produces no devices** — Angry IP Scanner isn't installed or
+  found (set `IPSCAN_APP`), or the backend isn't running in an interactive
+  desktop session (the scanner needs a display, so SSH/service runs won't work).

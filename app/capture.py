@@ -1,9 +1,13 @@
-"""Live packet capture via Wireshark's ``dumpcap`` (macOS-first).
+"""Live packet capture via Wireshark's ``dumpcap`` (macOS + Windows).
 
 We shell out to the installed ``dumpcap`` binary rather than embedding
 Wireshark: dumpcap is battle-tested, supports duration and size limits
 natively, and — with Wireshark's ChmodBPF / ``access_bpf`` group — captures
 WITHOUT sudo. The resulting ``.pcap`` feeds the existing ``parse_pcap_file``.
+
+On Windows, capture needs Npcap installed (bundled with the Wireshark
+installer) and the backend usually has to run as Administrator. Point the
+``DUMPCAP`` env var at ``dumpcap.exe`` if Wireshark isn't on the PATH.
 
 Nothing here parses packets; it only acquires the capture file.
 """
@@ -11,15 +15,30 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from typing import Optional, List, Dict
 
-# dumpcap lookup order: PATH first, then the usual macOS install locations.
-_DUMPCAP_CANDIDATES = (
-    "dumpcap",
-    "/opt/homebrew/bin/dumpcap",
-    "/usr/local/bin/dumpcap",
-    "/Applications/Wireshark.app/Contents/MacOS/dumpcap",
-)
+
+def _dumpcap_candidates() -> List[str]:
+    """dumpcap lookup order: explicit DUMPCAP override, PATH, then the usual
+    per-OS install locations."""
+    cands: List[str] = []
+    env = os.environ.get("DUMPCAP", "").strip()
+    if env:
+        cands.append(env)
+    cands.append("dumpcap")  # resolved via PATH
+    if sys.platform == "win32":
+        cands += [
+            r"C:\Program Files\Wireshark\dumpcap.exe",
+            r"C:\Program Files (x86)\Wireshark\dumpcap.exe",
+        ]
+    else:
+        cands += [
+            "/opt/homebrew/bin/dumpcap",
+            "/usr/local/bin/dumpcap",
+            "/Applications/Wireshark.app/Contents/MacOS/dumpcap",
+        ]
+    return cands
 
 
 class CaptureError(RuntimeError):
@@ -28,9 +47,10 @@ class CaptureError(RuntimeError):
 
 def find_dumpcap() -> Optional[str]:
     """Return an executable dumpcap path, or None if not installed."""
-    for c in _DUMPCAP_CANDIDATES:
-        if "/" in c:
-            if os.access(c, os.X_OK):
+    for c in _dumpcap_candidates():
+        looks_like_path = ("/" in c) or ("\\" in c)
+        if looks_like_path:
+            if os.path.isfile(c) and os.access(c, os.X_OK):
                 return c
         else:
             p = shutil.which(c)
@@ -59,20 +79,37 @@ def list_interfaces() -> List[Dict[str, str]]:
     return ifaces
 
 
+# Interface descriptions (from ``dumpcap -D``) that are virtual/loopback and
+# should never be the auto-picked default. Matched case-insensitively.
+_SKIP_IFACE_DESC = (
+    "loopback", "virtual", "vmware", "virtualbox", "hyper-v", "vpn",
+    "bluetooth", "wan miniport", "tunneling", "npcap loopback",
+)
+
+
 def default_interface() -> Optional[str]:
     """The interface carrying the default route — what we want to capture."""
-    try:
-        out = subprocess.run(["route", "-n", "get", "default"],
-                             capture_output=True, text=True, timeout=5).stdout
-        m = re.search(r"interface:\s*(\S+)", out)
-        if m:
-            return m.group(1)
-    except Exception:
-        pass
-    # Fallback: first non-loopback interface dumpcap reports.
+    # macOS/BSD: ask the routing table directly (most reliable).
+    if sys.platform == "darwin":
+        try:
+            out = subprocess.run(["route", "-n", "get", "default"],
+                                 capture_output=True, text=True, timeout=5).stdout
+            m = re.search(r"interface:\s*(\S+)", out)
+            if m:
+                return m.group(1)
+        except Exception:
+            pass
+    # Cross-platform fallback (and Windows default): first "real" interface
+    # dumpcap reports, skipping loopback/virtual adapters. On Windows names look
+    # like ``\Device\NPF_{GUID}`` with a human description in parentheses.
     for i in list_interfaces():
-        if not i["name"].startswith(("lo", "utun", "awdl", "llw")):
-            return i["name"]
+        name = i["name"]
+        desc = (i.get("description") or "").lower()
+        if name.startswith(("lo", "utun", "awdl", "llw")):
+            continue
+        if any(x in desc for x in _SKIP_IFACE_DESC):
+            continue
+        return name
     return None
 
 
